@@ -1,0 +1,3 @@
+packages:
+  source: gen/example
+  protoOutput: gen/example_proto

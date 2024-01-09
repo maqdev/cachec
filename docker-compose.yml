@@ -1,0 +1,25 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:16.1-alpine
+    ports:
+      - 5432:5432
+#    volumes:
+#      - ~/apps/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${APP_DB_NAME}
+      - POSTGRES_PASSWORD=${APP_DB_OWNER_PASS}
+      - POSTGRES_USER=${APP_DB_OWNER_USER}
+    healthcheck:
+      test: ["CMD", "psql", "-U", "${APP_DB_OWNER_USER}", "-d", "${APP_DB_NAME}", "-c", "select now()"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+  migrations:
+    image: migrate/migrate:v4.17.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+        - ./db/schema:/schema
+    command: "-path=/schema/ -database postgres://${APP_DB_OWNER_USER}:${APP_DB_OWNER_PASS}@postgres/${APP_DB_NAME}?sslmode=disable up"
