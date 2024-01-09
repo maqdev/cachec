@@ -1,9 +1,10 @@
 package config
 
 type AppConfig struct {
-	Module   string
-	Packages []Package
-	TypeMap  TypeMap
+	Module       string
+	Packages     []Package
+	TypeMap      TypeMap
+	ProtoImports map[ProtoFile][]ProtoType
 }
 
 type Package struct {
@@ -14,4 +15,5 @@ type Package struct {
 type GoModule string
 type GoType string
 type ProtoType string
+type ProtoFile string
 type TypeMap map[GoModule]map[GoType]ProtoType

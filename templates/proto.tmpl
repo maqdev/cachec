@@ -7,12 +7,16 @@ package {{.Package}};
 
 option go_package = "{{.GoPackage}}";
 
-{{range $message := .Messages}}
+{{- range $import := .ProtoImports}}
+import "{{$import}}";
+{{- end}}
+
+{{- range $message := .Messages}}
 
 message {{$message.Name}} {
-{{range $field := $message.Fields}}
+{{- range $field := $message.Fields}}
     {{$field.Type}} {{$field.Name}} = {{$field.Number}};
-{{end}}
+{{- end}}
 }
 
-{{end}}
+{{- end}}

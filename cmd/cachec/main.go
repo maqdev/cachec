@@ -9,7 +9,10 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/kkyr/fig"
 	"github.com/maqdev/cachec/config"
@@ -57,12 +60,13 @@ func run() error {
 
 	rootModuleName := modFileParsed.Module.Mod.Path
 	typeMap := mergeTypeMap(cfg.TypeMap)
+	protoImports := mergeProtoImportMap(cfg.ProtoImports)
 
 	for _, p := range cfg.Packages {
 		slog.Info("Processing", "package", p.Source)
 
 		fs := token.NewFileSet()
-		f, err := parser.ParseDir(fs, "./gen/a/", nil, parser.AllErrors /* parser.SkipObjectResolution*/)
+		f, err := parser.ParseDir(fs, p.Source, nil, parser.AllErrors /* parser.SkipObjectResolution*/)
 		if err != nil {
 			return fmt.Errorf("failed to parse package '%s': %w", p.Source, err)
 		}
@@ -81,11 +85,10 @@ func run() error {
 				CacheCVersion: CacheCVersion,
 			}
 
-			v := &astVisitor{templateData: td, typeMap: typeMap}
+			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports}
 			ast.Walk(v, packageAst)
-
 			if v.err != nil {
-				return fmt.Errorf("failed to walk package '%s': %w", packageName, v.err)
+				return fmt.Errorf("package parsing failed '%s': %w", packageName, v.err)
 			}
 
 			f, err := os.Create(path.Join(p.ProtoOutput, packageName+".proto"))
@@ -115,6 +118,12 @@ func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
 			"string":  "string",
 			"[]byte":  "bytes",
 		},
+		"time": map[config.GoType]config.ProtoType{
+			"Time": "google.protobuf.Timestamp",
+		},
+		"github.com/jackc/pgx/v5/pgtype": map[config.GoType]config.ProtoType{
+			"Text": "google.protobuf.StringValue",
+		},
 	}
 
 	for goModule, types := range typeMap {
@@ -123,6 +132,21 @@ func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
 		}
 		for goType, protoType := range types {
 			res[goModule][goType] = protoType
+		}
+	}
+	return res
+}
+
+type ProtoImportMap map[config.ProtoType]config.ProtoFile
+
+func mergeProtoImportMap(protoImports map[config.ProtoFile][]config.ProtoType) ProtoImportMap {
+	res := ProtoImportMap{
+		"google.protobuf.Timestamp":   "google/protobuf/timestamp.proto",
+		"google.protobuf.StringValue": "google/protobuf/wrappers.proto",
+	}
+	for protoFile, protoTypes := range protoImports {
+		for _, protoType := range protoTypes {
+			res[protoType] = protoFile
 		}
 	}
 	return res
@@ -147,16 +171,18 @@ type templateData struct {
 	Package       string
 	GoPackage     string
 	CacheCVersion string
+	ProtoImports  []config.ProtoFile
 	Messages      []templateMessage
 }
 
 type importAlias string
 
 type astVisitor struct {
-	imports      map[importAlias]config.GoModule
-	templateData templateData
-	typeMap      config.TypeMap
-	err          error
+	imports         map[importAlias]config.GoModule
+	templateData    templateData
+	typeMap         config.TypeMap
+	protoImportsMap ProtoImportMap
+	err             error
 }
 
 func (v *astVisitor) Visit(n ast.Node) ast.Visitor {
@@ -189,6 +215,10 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 				for _, field := range structType.Fields.List {
 					if len(field.Names) > 0 { // skip unnamed fields (anonymous structs?)
 						fieldName := field.Names[0].Name
+						if !unicode.IsUpper([]rune(fieldName)[0]) {
+							continue
+						}
+
 						typ, err := v.structTypeToProto(field.Type)
 						if err != nil {
 							return fmt.Errorf("failed to convert field '%s' of type '%s' to proto: %w", fieldName, field.Type, err)
@@ -202,7 +232,9 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 					}
 				}
 
-				v.templateData.Messages = append(v.templateData.Messages, msg)
+				if len(msg.Fields) > 0 {
+					v.templateData.Messages = append(v.templateData.Messages, msg)
+				}
 			}
 		}
 	}
@@ -210,16 +242,21 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 }
 
 func (v *astVisitor) visitImportSpec(t *ast.ImportSpec) error {
-	var alias string
+	var alias, p string
 	if t.Name != nil {
 		alias = t.Name.Name
 	} else {
-		alias = path.Base(t.Path.Value)
+		var err error
+		p, err = strconv.Unquote(t.Path.Value)
+		if err != nil {
+			return fmt.Errorf("failed to parse import path '%s' : %w", t.Path.Value, err)
+		}
+		alias = path.Base(p)
 	}
 	if v.imports == nil {
 		v.imports = make(map[importAlias]config.GoModule)
 	}
-	v.imports[importAlias(alias)] = config.GoModule(t.Path.Value)
+	v.imports[importAlias(alias)] = config.GoModule(p)
 	return nil
 }
 
@@ -245,10 +282,17 @@ func (v *astVisitor) structTypeToProto(expr ast.Expr) (string, error) {
 
 	if types, ok := v.typeMap[module]; ok {
 		if protoType, ok := types[typ]; ok {
+
+			if protoFile, ok := v.protoImportsMap[protoType]; ok {
+				if slices.Index(v.templateData.ProtoImports, protoFile) < 0 {
+					v.templateData.ProtoImports = append(v.templateData.ProtoImports, protoFile)
+				}
+			}
+
 			return string(protoType), nil
 		}
 	}
-	return "", fmt.Errorf("Can't find mapping of %s.%s", typ, module)
+	return "", fmt.Errorf("Can't find mapping of %s.%s", module, typ)
 }
 
 var emptyVisitor ast.Visitor = emptyVisitorImpl{}
