@@ -1,15 +1,16 @@
 package config
 
 type AppConfig struct {
-	Module       string
-	Packages     []Package
-	TypeMap      TypeMap
-	ProtoImports map[ProtoFile][]ProtoType
+	Packages       []Package
+	TypeMap        TypeMap
+	ProtoImports   map[ProtoFile][]ProtoType
+	SkipDALMethods map[string]bool
 }
 
 type Package struct {
 	Source      string
 	ProtoOutput string
+	GoOutput    string
 }
 
 type GoModule string

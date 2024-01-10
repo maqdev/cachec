@@ -3,15 +3,15 @@
 //   cachec {{.CacheCVersion}}
 
 syntax = "proto3";
-package {{.Package}};
+package {{.ProtoPackageName}};
 
-option go_package = "{{.GoPackage}}";
+option go_package = "{{.GoPackagePath}}";
 
 {{- range $import := .ProtoImports}}
 import "{{$import}}";
 {{- end}}
 
-{{- range $message := .Messages}}
+{{- range $message := .ProtoMessages}}
 
 message {{$message.Name}} {
 {{- range $field := $message.Fields}}

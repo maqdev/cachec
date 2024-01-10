@@ -9,9 +9,11 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"text/template"
 	"unicode"
 
 	"github.com/kkyr/fig"
@@ -21,6 +23,7 @@ import (
 )
 
 const CacheCVersion = "0.0.1"
+const DALStructName = "Queries"
 
 func main() {
 	err := run()
@@ -61,48 +64,80 @@ func run() error {
 	rootModuleName := modFileParsed.Module.Mod.Path
 	typeMap := mergeTypeMap(cfg.TypeMap)
 	protoImports := mergeProtoImportMap(cfg.ProtoImports)
+	skipDALMethids := mergeSkipDALMethods(cfg.SkipDALMethods)
 
 	for _, p := range cfg.Packages {
 		slog.Info("Processing", "package", p.Source)
 
 		fs := token.NewFileSet()
-		f, err := parser.ParseDir(fs, p.Source, nil, parser.AllErrors /* parser.SkipObjectResolution*/)
+		var parsedPkgs map[string]*ast.Package
+		parsedPkgs, err = parser.ParseDir(fs, p.Source, nil, parser.AllErrors /* parser.SkipObjectResolution*/)
 		if err != nil {
 			return fmt.Errorf("failed to parse package '%s': %w", p.Source, err)
 		}
 
-		err = os.MkdirAll(p.ProtoOutput, 0755)
-		if err != nil {
-			return fmt.Errorf("failed to create ouput directory '%s': %w", p.ProtoOutput, err)
-		}
-
-		for packageName, packageAst := range f {
+		for packageName, packageAst := range parsedPkgs {
 			slog.Debug("Walking package", "name", packageName)
 
 			td := templateData{
-				Package:       packageName,
-				GoPackage:     moduleJoinPath(rootModuleName, p.ProtoOutput),
-				CacheCVersion: CacheCVersion,
+				ProtoPackageName:    packageName,
+				SourceGoPackagePath: moduleJoinPath(rootModuleName, p.Source),
+				GoPackageName:       packageName,
+				GoPackagePath:       moduleJoinPath(rootModuleName, p.GoOutput),
+				CacheCVersion:       CacheCVersion,
 			}
 
-			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports}
+			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports, skipDALMethids: skipDALMethids}
 			ast.Walk(v, packageAst)
 			if v.err != nil {
 				return fmt.Errorf("package parsing failed '%s': %w", packageName, v.err)
 			}
 
-			f, err := os.Create(path.Join(p.ProtoOutput, packageName+".proto"))
-			if err != nil {
-				return fmt.Errorf("failed to create proto file '%s': %w", packageName, err)
+			tmpls := []struct {
+				dest     string
+				template *template.Template
+			}{
+				{
+					dest:     path.Join(p.ProtoOutput, packageName+".proto"),
+					template: templates.ProtoTemplate,
+				},
+				{
+					dest:     path.Join(p.GoOutput, packageName+".go"),
+					template: templates.DALTemplate,
+				},
 			}
-			err = templates.ProtoTemplate.Execute(f, v.templateData)
-			if err != nil {
-				return fmt.Errorf("failed to generate proto file: '%s': %w", packageName, err)
+
+			for _, tmpl := range tmpls {
+				err = os.MkdirAll(path.Dir(tmpl.dest), 0755)
+				if err != nil {
+					return fmt.Errorf("failed to create ouput directory '%s': %w", p.ProtoOutput, err)
+				}
+
+				slog.Info("Generating", "file", tmpl.dest)
+				var f *os.File
+				f, err = os.Create(tmpl.dest)
+				if err != nil {
+					return fmt.Errorf("failed to create file '%s': %w", tmpl.dest, err)
+				}
+				err = tmpl.template.Execute(f, v.templateData)
+				if err != nil {
+					return fmt.Errorf("failed to generate file: '%s': %w", tmpl.dest, err)
+				}
 			}
 		}
 	}
 
 	return nil
+}
+
+func mergeSkipDALMethods(methods map[string]bool) map[string]bool {
+	res := map[string]bool{
+		"WithTx": true,
+	}
+	for k, v := range methods {
+		res[k] = v
+	}
+	return res
 }
 
 func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
@@ -152,8 +187,8 @@ func mergeProtoImportMap(protoImports map[config.ProtoFile][]config.ProtoType) P
 	return res
 }
 
-func moduleJoinPath(name string, output string) string {
-	return name + "/" + strings.TrimLeft(strings.TrimLeft(output, "./"), ".")
+func moduleJoinPath(rootPath string, subdir string) config.GoModule {
+	return config.GoModule(rootPath + "/" + strings.TrimLeft(strings.TrimLeft(subdir, "./"), "."))
 }
 
 type templateMessageField struct {
@@ -167,35 +202,64 @@ type templateMessage struct {
 	Fields []templateMessageField
 }
 
+type templateParam struct {
+	Name       string
+	GoFullType string
+}
+
+type templateDALMethod struct {
+	Name   string
+	Args   []templateParam
+	Result []templateParam
+}
+
 type templateData struct {
-	Package       string
-	GoPackage     string
-	CacheCVersion string
-	ProtoImports  []config.ProtoFile
-	Messages      []templateMessage
+	ProtoPackageName    string
+	SourceGoPackagePath config.GoModule
+	GoPackagePath       config.GoModule
+	GoPackageName       string
+	CacheCVersion       string
+	ProtoImports        []config.ProtoFile
+	ProtoMessages       []templateMessage
+	DALMethods          []templateDALMethod
+	GoImports           map[importAlias]config.GoModule
 }
 
 type importAlias string
 
 type astVisitor struct {
-	imports         map[importAlias]config.GoModule
 	templateData    templateData
 	typeMap         config.TypeMap
 	protoImportsMap ProtoImportMap
+	goFileImports   map[importAlias]config.GoModule
+	skipDALMethids  map[string]bool
 	err             error
 }
 
 func (v *astVisitor) Visit(n ast.Node) ast.Visitor {
+	// fmt.Printf("------> %v %T\n", n, n)
+
 	var err error
 	switch t := n.(type) {
+	case *ast.Package:
+		v.templateData.GoImports = make(map[importAlias]config.GoModule)
+
+	case *ast.File:
+		// reset file imports (aliases)
+		v.goFileImports = make(map[importAlias]config.GoModule)
+
 	case *ast.GenDecl:
 		if t.Tok == token.TYPE {
 			err = v.visitGenDecl(t)
-
 		}
+
 	case *ast.ImportSpec:
 		err = v.visitImportSpec(t)
+
+	case *ast.FuncDecl:
+		err = v.visitFuncDecl(t)
 	}
+
 	if err != nil {
 		v.err = err
 		return emptyVisitor
@@ -206,7 +270,14 @@ func (v *astVisitor) Visit(n ast.Node) ast.Visitor {
 func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 	for _, spec := range t.Specs {
 		if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-			if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+			if structType, okStructType := typeSpec.Type.(*ast.StructType); okStructType {
+				if typeSpec.Name.Name == DALStructName {
+					err := v.visitQueries(structType)
+					if err != nil {
+						return err
+					}
+				}
+
 				msg := templateMessage{
 					Name: typeSpec.Name.Name,
 				}
@@ -233,7 +304,7 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 				}
 
 				if len(msg.Fields) > 0 {
-					v.templateData.Messages = append(v.templateData.Messages, msg)
+					v.templateData.ProtoMessages = append(v.templateData.ProtoMessages, msg)
 				}
 			}
 		}
@@ -242,25 +313,36 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 }
 
 func (v *astVisitor) visitImportSpec(t *ast.ImportSpec) error {
-	var alias, p string
+	var alias importAlias
+	var mod config.GoModule
 	if t.Name != nil {
-		alias = t.Name.Name
+		alias = importAlias(t.Name.Name)
 	} else {
-		var err error
-		p, err = strconv.Unquote(t.Path.Value)
+		mods, err := strconv.Unquote(t.Path.Value)
 		if err != nil {
 			return fmt.Errorf("failed to parse import path '%s' : %w", t.Path.Value, err)
 		}
-		alias = path.Base(p)
+		mod = config.GoModule(mods)
+		alias = defaultAlias(mod)
 	}
-	if v.imports == nil {
-		v.imports = make(map[importAlias]config.GoModule)
+	if v.goFileImports == nil {
+		v.goFileImports = make(map[importAlias]config.GoModule)
 	}
-	v.imports[importAlias(alias)] = config.GoModule(p)
+	v.goFileImports[alias] = mod
 	return nil
 }
 
-func (v *astVisitor) structTypeToProto(expr ast.Expr) (string, error) {
+var versionedPackageRegex = regexp.MustCompile("^v\\d+$")
+
+func defaultAlias(p config.GoModule) importAlias {
+	s := path.Base(string(p))
+	if versionedPackageRegex.Match([]byte(s)) {
+		s = path.Base(path.Dir(string(p)))
+	}
+	return importAlias(s)
+}
+
+func (v *astVisitor) resolveGoType(expr ast.Expr) (config.GoModule, config.GoType, error) {
 	var module config.GoModule
 	var typ config.GoType
 
@@ -269,34 +351,170 @@ func (v *astVisitor) structTypeToProto(expr ast.Expr) (string, error) {
 		typ = config.GoType(t.Name)
 	case *ast.SelectorExpr:
 		alias := importAlias(t.X.(*ast.Ident).Name)
-		if m, ok := v.imports[alias]; ok {
+		if m, ok := v.goFileImports[alias]; ok {
 			module = m
 		} else {
-			return "", fmt.Errorf("unknown import alias: %v", alias)
+			return "", "", fmt.Errorf("unknown import alias: %v", alias)
 		}
 
 		typ = config.GoType(t.Sel.Name)
+	case *ast.ArrayType:
+		var err error
+		module, typ, err = v.resolveGoType(t.Elt)
+		if err != nil {
+			return "", "", err
+		}
+		typ = "[]" + typ
 	default:
-		return "", fmt.Errorf("Unknown field type: %v", expr)
+		return "", "", fmt.Errorf("unknown field type: %v", expr)
+	}
+	// source package types if they start with Uppercase, otherwise those are builtin types such as int32
+	if module == "" && unicode.IsUpper([]rune(typ)[0]) {
+		module = v.templateData.SourceGoPackagePath
+	}
+
+	return module, typ, nil
+}
+
+func (v *astVisitor) structTypeToProto(expr ast.Expr) (string, error) {
+	module, typ, err := v.resolveGoType(expr)
+	if err != nil {
+		return "", err
+	}
+
+	var isArray bool
+	if strings.HasPrefix(string(typ), "[]") {
+		isArray = true
+		typ = config.GoType(strings.TrimLeft(string(typ), "[]"))
 	}
 
 	if types, ok := v.typeMap[module]; ok {
-		if protoType, ok := types[typ]; ok {
-
-			if protoFile, ok := v.protoImportsMap[protoType]; ok {
+		if protoType, okProtoType := types[typ]; okProtoType {
+			if protoFile, okProtoImport := v.protoImportsMap[protoType]; okProtoImport {
 				if slices.Index(v.templateData.ProtoImports, protoFile) < 0 {
 					v.templateData.ProtoImports = append(v.templateData.ProtoImports, protoFile)
 				}
 			}
 
+			// todo: apply isArray !!!
+			fmt.Println(isArray)
+
 			return string(protoType), nil
 		}
 	}
-	return "", fmt.Errorf("Can't find mapping of %s.%s", module, typ)
+	return "", fmt.Errorf("can't find mapping of %s.%s", module, typ)
+}
+
+func (v *astVisitor) visitQueries(_ *ast.StructType) error {
+	return nil
+}
+
+func (v *astVisitor) visitFuncDecl(t *ast.FuncDecl) error {
+	if t.Name == nil ||
+		v.skipDALMethids[t.Name.Name] ||
+		!unicode.IsUpper([]rune(t.Name.Name)[0]) ||
+		t.Type.Params == nil || len(t.Type.Params.List) == 0 ||
+		t.Type.Results == nil || len(t.Type.Results.List) == 0 ||
+		t.Recv == nil || len(t.Recv.List) != 1 {
+		return nil
+	}
+
+	receiverName := resolveReceiver(t)
+
+	// handle `Queries` methods to generate DAL interface
+	if receiverName == DALStructName {
+		args, err := v.resolveListOfArgs(t.Type.Params)
+		if err != nil {
+			return err
+		}
+		var result []templateParam
+		result, err = v.resolveListOfArgs(t.Type.Results)
+		if err != nil {
+			return err
+		}
+
+		m := templateDALMethod{
+			Name:   t.Name.Name,
+			Args:   args,
+			Result: result,
+		}
+		v.templateData.DALMethods = append(v.templateData.DALMethods, m)
+	}
+	return nil
+}
+
+func varName(name []*ast.Ident) string {
+	if name != nil {
+		return name[0].Name
+	}
+	return ""
+}
+
+func resolveReceiver(t *ast.FuncDecl) string {
+	if t.Recv == nil || len(t.Recv.List) != 1 {
+		return ""
+	}
+
+	switch recv := t.Recv.List[0].Type.(type) {
+	case *ast.Ident:
+		return recv.Name
+	case *ast.StarExpr:
+		return recv.X.(*ast.Ident).Name
+	}
+	return ""
+}
+
+func (v *astVisitor) resolveListOfArgs(params *ast.FieldList) ([]templateParam, error) {
+	res := make([]templateParam, 0, len(params.List))
+	for _, p := range params.List {
+		mod, typ, err := v.resolveGoType(p.Type)
+		if err != nil {
+			return nil, err
+		}
+		alias := v.addOrFindAlias(mod)
+
+		var fullType string
+		if alias != "" {
+			if strings.HasPrefix(string(typ), "[]") {
+				typ = typ[2:]
+				alias = "[]" + alias
+			}
+
+			fullType = string(alias) + "." + string(typ)
+		} else {
+			fullType = string(typ)
+		}
+
+		res = append(res, templateParam{
+			Name:       varName(p.Names),
+			GoFullType: fullType,
+		})
+	}
+	return res, nil
+}
+
+func (v *astVisitor) addOrFindAlias(mod config.GoModule) importAlias {
+	if mod == "" {
+		return ""
+	}
+	def := defaultAlias(mod)
+	alias := def
+	for i := 1; ; i++ {
+		if existingMod, ok := v.templateData.GoImports[alias]; ok {
+			if existingMod == mod {
+				break
+			}
+		} else {
+			v.templateData.GoImports[alias] = mod
+			break
+		}
+		alias = importAlias(fmt.Sprintf("%s%d", def, i))
+	}
+	return alias
 }
 
 var emptyVisitor ast.Visitor = emptyVisitorImpl{}
 
 type emptyVisitorImpl struct{}
 
-func (e emptyVisitorImpl) Visit(node ast.Node) (w ast.Visitor) { return e }
+func (e emptyVisitorImpl) Visit(_ ast.Node) (w ast.Visitor) { return e }

@@ -1,3 +1,18 @@
 packages:
   source: gen/example
-  protoOutput: gen/example_proto
+  protoOutput: gen/proto
+  goOutput: gen/dal
+  cache:
+    GetAuthor:
+      prefix: "author:"
+      keys: [ id ]
+      ttl: 10min
+    GetAuthors:
+      mkeys: [ ids ]
+      ttl: 10min
+    DeleteAuthor:
+      keys: [ id ]
+      ttl: 0
+    UpdateAuthor:
+      keys: [ id ]
+      ttl: 0

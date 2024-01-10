@@ -2,8 +2,13 @@
 SELECT * FROM authors
 WHERE id = $1 LIMIT 1;
 
--- name: ListAuthors :many
+-- name: GetAllAuthors :many
 SELECT * FROM authors
+ORDER BY name;
+
+-- name: GetAuthorsByIDs :many
+SELECT * FROM authors
+WHERE id = ANY(@ids::bigint[])
 ORDER BY name;
 
 -- name: CreateAuthor :one

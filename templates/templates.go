@@ -9,11 +9,16 @@ var (
 	//go:embed proto.tmpl
 	protoFS embed.FS
 
-	ProtoTemplate = MustParse("proto", protoFS)
+	ProtoTemplate = mustParse("proto.tmpl", protoFS)
+
+	//go:embed dal.tmpl
+	dalFS embed.FS
+
+	DALTemplate = mustParse("dal.tmpl", dalFS)
 )
 
-func MustParse(name string, fs embed.FS) *template.Template {
-	b, err := protoFS.ReadFile("proto.tmpl")
+func mustParse(name string, fs embed.FS) *template.Template {
+	b, err := fs.ReadFile(name)
 	if err != nil {
 		panic(err)
 	}
