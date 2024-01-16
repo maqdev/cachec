@@ -9,3 +9,5 @@ Cache layer generator for Go
 5.2. overrides for types (converters)
 5.3. specify: cache key, cache ttl, cache prefix (get/or update/mget?), ignore specific methods
     
+
+entity map (shorten keys)

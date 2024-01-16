@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.5.1
 	github.com/kkyr/fig v0.4.0
 	golang.org/x/mod v0.9.0
+	google.golang.org/protobuf v1.32.0
 )
 
 require (

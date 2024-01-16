@@ -3,16 +3,13 @@ packages:
   protoOutput: gen/proto
   goOutput: gen/dal
   cache:
-    GetAuthor:
-      prefix: "author:"
-      keys: [ id ]
+    author:
+      keys: [id]
       ttl: 10min
-    GetAuthors:
-      mkeys: [ ids ]
-      ttl: 10min
-    DeleteAuthor:
-      keys: [ id ]
-      ttl: 0
-    UpdateAuthor:
-      keys: [ id ]
-      ttl: 0
+      read:
+        GetAuthor:
+        GetAuthorsByIDs:
+          strategy: multi
+      invalidate:
+        DeleteAuthor:
+        UpdateAuthor:

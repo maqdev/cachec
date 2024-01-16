@@ -17,10 +17,10 @@ install-tools:
 sqlc:
 	@sqlc generate
 
-#.PHONY: proto
-#proto:
-#	@mkdir -p ./gen/proto
-#	@docker run --rm -v "${PWD}":"/data/" -w "/data/" --user "$(USER_ID):$(GROUP_ID)" "jaegertracing/protobuf:v0.5.0" --go_out="./gen/proto" --proto_path "./" "./proto/**/*.proto"
+.PHONY: proto
+proto:
+	@mkdir -p ./gen/proto
+	@docker run --rm -v "${PWD}":"/data/" -w "/data/" --user "$(USER_ID):$(GROUP_ID)" "jaegertracing/protobuf:v0.5.0" --go_out="./" --proto_path "./" "./gen/proto/*.proto"
 
 .PHONY: test
 test:
