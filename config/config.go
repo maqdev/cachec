@@ -8,9 +8,10 @@ type AppConfig struct {
 }
 
 type Package struct {
-	Source      string
-	ProtoOutput string
-	GoOutput    string
+	Source            string
+	ProtoOutput       string
+	DALOutput         string
+	CacheModelsOutput string
 }
 
 type GoModule string

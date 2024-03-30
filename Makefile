@@ -13,17 +13,11 @@ install-tools:
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(LINTER_VERSION)
 	@go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
-.PHONY: sqlc
-sqlc:
-	@sqlc generate
-
-.PHONY: proto
-proto:
-	@mkdir -p ./gen/proto
-	@docker run --rm -v "${PWD}":"/data/" -w "/data/" --user "$(USER_ID):$(GROUP_ID)" "${PROTOBUF_DOCKER}" --go_out="./" --proto_path "./" "./gen/proto/*.proto"
-
 .PHONY: test
 test:
+	@sqlc generate -f ./tests/sqlc.yaml
+	@go run cmd/cachec/main.go --config ./tests/cachec.yaml
+	@docker run --rm -v "${PWD}":"/data/" -w "/data/" --user "$(USER_ID):$(GROUP_ID)" "${PROTOBUF_DOCKER}" --go_out="./" --proto_path "./" "./tests/gen/proto/*.proto"
 	@go test $(TEST_OPTS) ./...
 
 .PHONY: lint

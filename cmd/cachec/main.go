@@ -78,12 +78,23 @@ func run() error {
 
 		for packageName, packageAst := range parsedPkgs {
 			slog.Debug("Walking package", "name", packageName)
+			if p.DALOutput == "" {
+				return fmt.Errorf("DALOutput is required for package '%s'", packageName)
+			}
+
+			var protoGoPackagePath config.GoModule
+			if p.CacheModelsOutput != "" {
+				protoGoPackagePath = moduleRelPath(p.CacheModelsOutput)
+			} else {
+				protoGoPackagePath = moduleRelPath(p.DALOutput) + "/cache"
+			}
 
 			td := templateData{
 				ProtoPackageName:    packageName,
 				SourceGoPackagePath: moduleJoinPath(rootModuleName, p.Source),
 				GoPackageName:       packageName,
-				GoPackagePath:       moduleJoinPath(rootModuleName, p.GoOutput),
+				DALGoPackagePath:    moduleJoinPath(rootModuleName, p.DALOutput),
+				ProtoGoPackagePath:  protoGoPackagePath,
 				CacheCVersion:       CacheCVersion,
 			}
 
@@ -102,7 +113,7 @@ func run() error {
 					template: templates.ProtoTemplate,
 				},
 				{
-					dest:     path.Join(p.GoOutput, packageName+".go"),
+					dest:     path.Join(p.DALOutput, packageName+".go"),
 					template: templates.DALTemplate,
 				},
 			}
@@ -188,7 +199,11 @@ func mergeProtoImportMap(protoImports map[config.ProtoFile][]config.ProtoType) P
 }
 
 func moduleJoinPath(rootPath string, subdir string) config.GoModule {
-	return config.GoModule(rootPath + "/" + strings.TrimLeft(strings.TrimLeft(subdir, "./"), "."))
+	return config.GoModule(rootPath) + "/" + moduleRelPath(subdir)
+}
+
+func moduleRelPath(subdir string) config.GoModule {
+	return config.GoModule(strings.TrimLeft(strings.TrimLeft(subdir, "./"), "."))
 }
 
 type templateMessageField struct {
@@ -216,7 +231,8 @@ type templateDALMethod struct {
 type templateData struct {
 	ProtoPackageName    string
 	SourceGoPackagePath config.GoModule
-	GoPackagePath       config.GoModule
+	DALGoPackagePath    config.GoModule
+	ProtoGoPackagePath  config.GoModule
 	GoPackageName       string
 	CacheCVersion       string
 	ProtoImports        []config.ProtoFile

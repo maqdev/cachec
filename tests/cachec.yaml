@@ -1,7 +1,8 @@
 packages:
-  source: gen/example
-  protoOutput: gen/proto
-  goOutput: gen/dal
+  source: tests/gen/queries/example
+  protoOutput: tests/gen/proto
+  dalOutput: tests/gen/dal/example
+
   cache:
     author:
       keys: [id]
