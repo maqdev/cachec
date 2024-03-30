@@ -3,10 +3,10 @@ packages:
   protoOutput: tests/gen/proto
   dalOutput: tests/gen/dal/example
 
-  cache:
-    author:
-      keys: [id]
-      ttl: 10min
+  entities:
+    Author:
+      keys: [ID]
+      ttl: 10m
       read:
         GetAuthor:
         GetAuthorsByIDs:

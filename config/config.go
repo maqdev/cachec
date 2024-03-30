@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 type AppConfig struct {
 	Packages       []Package
 	TypeMap        TypeMap
@@ -12,7 +14,20 @@ type Package struct {
 	ProtoOutput       string
 	DALOutput         string
 	CacheModelsOutput string
+	Entities          map[string]EntityConfig
 }
+
+type EntityConfig struct {
+	Key        []string
+	TTL        time.Duration
+	Read       map[MethodName]ReadMethodConfig
+	Invalidate map[MethodName]InvalidateMethodConfig
+}
+
+type MethodName string
+
+type ReadMethodConfig struct{}
+type InvalidateMethodConfig struct{}
 
 type GoModule string
 type GoType string
