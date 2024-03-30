@@ -1,9 +1,9 @@
 TEST_OPTS=--race
 LINT_OPTS=
 
-LINTER_VERSION=v1.55.2
-SQLC_VERSION=v1.25.0
-PROTOC_VERSION=3.21.2
+LINTER_VERSION=v1.57.2
+SQLC_VERSION=v1.26.0
+PROTOBUF_DOCKER=jaegertracing/protobuf:v0.5.0
 
 USER_ID = $(shell id -u)
 GROUP_ID = $(shell id -g)
@@ -20,7 +20,7 @@ sqlc:
 .PHONY: proto
 proto:
 	@mkdir -p ./gen/proto
-	@docker run --rm -v "${PWD}":"/data/" -w "/data/" --user "$(USER_ID):$(GROUP_ID)" "jaegertracing/protobuf:v0.5.0" --go_out="./" --proto_path "./" "./gen/proto/*.proto"
+	@docker run --rm -v "${PWD}":"/data/" -w "/data/" --user "$(USER_ID):$(GROUP_ID)" "${PROTOBUF_DOCKER}" --go_out="./" --proto_path "./" "./gen/proto/*.proto"
 
 .PHONY: test
 test:
