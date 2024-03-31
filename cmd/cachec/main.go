@@ -6,9 +6,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"log/slog"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -20,6 +22,7 @@ import (
 	"github.com/maqdev/cachec/config"
 	"github.com/maqdev/cachec/templates"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/tools/go/packages"
 )
 
 const CacheCVersion = "0.0.1"
@@ -69,14 +72,37 @@ func run() error {
 	for _, p := range cfg.Packages {
 		slog.Info("Processing", "package", p.Source)
 
-		fs := token.NewFileSet()
-		var parsedPkgs map[string]*ast.Package
-		parsedPkgs, err = parser.ParseDir(fs, p.Source, nil, parser.AllErrors /* parser.SkipObjectResolution*/)
-		if err != nil {
-			return fmt.Errorf("failed to parse package '%s': %w", p.Source, err)
+		cfg := &packages.Config{
+			Mode: packages.NeedTypesInfo | packages.NeedTypes /*| packages.NeedImports*/ | packages.NeedName,
 		}
 
-		for packageName, packageAst := range parsedPkgs {
+		pkgs, err := packages.Load(cfg, string(moduleJoinPath(rootModuleName, p.Source)))
+		if err != nil {
+			return fmt.Errorf("failed to load package '%s': %w", p.Source, err)
+		}
+
+		//fs := token.NewFileSet()
+		//tc := types.Config{
+		//	Importer:  importer.Default(),
+		//	GoVersion: "go1.22.1",
+		//}
+		//files, err := ParseDir(fs, p.Source, parser.AllErrors)
+		//if err != nil {
+		//	return fmt.Errorf("failed to parse dir with package '%s': %w", p.Source, err)
+		//}
+		//
+		//pkg, err := tc.Check(p.Source, fs, files, nil)
+		//
+		//if err != nil {
+		//	return fmt.Errorf("failed to parse package '%s': %w", p.Source, err)
+		//}
+
+		for _, pkg := range pkgs {
+			if len(pkg.Errors) != 0 {
+				return fmt.Errorf("failed to load package '%s': %w", p.Source, pkg.Errors[0])
+			}
+			packageName := pkg.Name
+
 			slog.Debug("Walking package", "name", packageName)
 			if p.DALOutput == "" {
 				return fmt.Errorf("DALOutput is required for package '%s'", packageName)
@@ -99,7 +125,7 @@ func run() error {
 			}
 
 			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports, skipDALMethids: skipDALMethids}
-			ast.Walk(v, packageAst)
+			ast.Walk(v, pkg.Types)
 			if v.err != nil {
 				return fmt.Errorf("package parsing failed '%s': %w", packageName, v.err)
 			}
@@ -139,6 +165,28 @@ func run() error {
 	}
 
 	return nil
+}
+
+func ParseDir(fset *token.FileSet, path string, mode parser.Mode) (files []*ast.File, first error) {
+	list, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range list {
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".go") {
+			continue
+		}
+		filename := filepath.Join(path, d.Name())
+		src, err := parser.ParseFile(fset, filename, nil, mode)
+
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, src)
+	}
+
+	return files, nil
 }
 
 func mergeSkipDALMethods(methods map[string]bool) map[string]bool {
@@ -257,7 +305,10 @@ func (v *astVisitor) Visit(n ast.Node) ast.Visitor {
 
 	var err error
 	switch t := n.(type) {
-	case *ast.Package:
+	//case *ast.Package:
+	//	v.templateData.GoImports = make(map[importAlias]config.GoModule)
+
+	case types.Object:
 		v.templateData.GoImports = make(map[importAlias]config.GoModule)
 
 	case *ast.File:
