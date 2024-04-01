@@ -4,13 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"go/types"
 	"log/slog"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -73,29 +70,13 @@ func run() error {
 		slog.Info("Processing", "package", p.Source)
 
 		cfg := &packages.Config{
-			Mode: packages.NeedTypesInfo | packages.NeedTypes /*| packages.NeedImports*/ | packages.NeedName,
+			Mode: packages.NeedTypesInfo | packages.NeedTypes | packages.NeedImports | packages.NeedName | packages.NeedSyntax,
 		}
 
 		pkgs, err := packages.Load(cfg, string(moduleJoinPath(rootModuleName, p.Source)))
 		if err != nil {
 			return fmt.Errorf("failed to load package '%s': %w", p.Source, err)
 		}
-
-		//fs := token.NewFileSet()
-		//tc := types.Config{
-		//	Importer:  importer.Default(),
-		//	GoVersion: "go1.22.1",
-		//}
-		//files, err := ParseDir(fs, p.Source, parser.AllErrors)
-		//if err != nil {
-		//	return fmt.Errorf("failed to parse dir with package '%s': %w", p.Source, err)
-		//}
-		//
-		//pkg, err := tc.Check(p.Source, fs, files, nil)
-		//
-		//if err != nil {
-		//	return fmt.Errorf("failed to parse package '%s': %w", p.Source, err)
-		//}
 
 		for _, pkg := range pkgs {
 			if len(pkg.Errors) != 0 {
@@ -122,10 +103,12 @@ func run() error {
 				DALGoPackagePath:    moduleJoinPath(rootModuleName, p.DALOutput),
 				ProtoGoPackagePath:  protoGoPackagePath,
 				CacheCVersion:       CacheCVersion,
+				GoCachePackageName:  path.Base(string(protoGoPackagePath)),
 			}
 
-			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports, skipDALMethids: skipDALMethids}
-			ast.Walk(v, pkg.Types)
+			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports, skipDALMethids: skipDALMethids, cacheEntities: p.Entities}
+			v.walkPackage(pkg)
+
 			if v.err != nil {
 				return fmt.Errorf("package parsing failed '%s': %w", packageName, v.err)
 			}
@@ -141,6 +124,11 @@ func run() error {
 				{
 					dest:     path.Join(p.DALOutput, packageName+".go"),
 					template: templates.DALTemplate,
+				},
+
+				{
+					dest:     path.Join(string(protoGoPackagePath), packageName+".protoconv.go"),
+					template: templates.ProtoConvTemplate,
 				},
 			}
 
@@ -165,28 +153,6 @@ func run() error {
 	}
 
 	return nil
-}
-
-func ParseDir(fset *token.FileSet, path string, mode parser.Mode) (files []*ast.File, first error) {
-	list, err := os.ReadDir(path)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, d := range list {
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".go") {
-			continue
-		}
-		filename := filepath.Join(path, d.Name())
-		src, err := parser.ParseFile(fset, filename, nil, mode)
-
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, src)
-	}
-
-	return files, nil
 }
 
 func mergeSkipDALMethods(methods map[string]bool) map[string]bool {
@@ -276,6 +242,17 @@ type templateDALMethod struct {
 	Result []templateParam
 }
 
+type templateCacheEntityField struct {
+	Name   string
+	ToPG   string
+	FromPG string
+}
+
+type templateCacheEntity struct {
+	Name   string
+	Fields []templateCacheEntityField
+}
+
 type templateData struct {
 	ProtoPackageName    string
 	SourceGoPackagePath config.GoModule
@@ -287,6 +264,10 @@ type templateData struct {
 	ProtoMessages       []templateMessage
 	DALMethods          []templateDALMethod
 	GoImports           map[importAlias]config.GoModule
+
+	GoCachePackageName string
+	GoCacheImports     map[importAlias]config.GoModule
+	CacheEntities      []templateCacheEntity
 }
 
 type importAlias string
@@ -297,7 +278,15 @@ type astVisitor struct {
 	protoImportsMap ProtoImportMap
 	goFileImports   map[importAlias]config.GoModule
 	skipDALMethids  map[string]bool
+	cacheEntities   map[string]config.EntityConfig
 	err             error
+}
+
+func (v *astVisitor) walkPackage(pkg *packages.Package) {
+	v.templateData.GoImports = make(map[importAlias]config.GoModule)
+	for _, file := range pkg.Syntax {
+		ast.Walk(v, file)
+	}
 }
 
 func (v *astVisitor) Visit(n ast.Node) ast.Visitor {
@@ -305,12 +294,6 @@ func (v *astVisitor) Visit(n ast.Node) ast.Visitor {
 
 	var err error
 	switch t := n.(type) {
-	//case *ast.Package:
-	//	v.templateData.GoImports = make(map[importAlias]config.GoModule)
-
-	case types.Object:
-		v.templateData.GoImports = make(map[importAlias]config.GoModule)
-
 	case *ast.File:
 		// reset file imports (aliases)
 		v.goFileImports = make(map[importAlias]config.GoModule)
@@ -372,11 +355,32 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 
 				if len(msg.Fields) > 0 {
 					v.templateData.ProtoMessages = append(v.templateData.ProtoMessages, msg)
+
+					if ce, ok := v.cacheEntities[msg.Name]; ok {
+						v.templateData.CacheEntities = append(v.templateData.CacheEntities, v.createCacheEntity(msg, ce))
+					}
 				}
 			}
 		}
 	}
 	return nil
+}
+
+func (v *astVisitor) createCacheEntity(msg templateMessage, ce config.EntityConfig) templateCacheEntity {
+	var fields []templateCacheEntityField
+	for _, src := range msg.Fields {
+		field := templateCacheEntityField{
+			Name:   src.Name,
+			ToPG:   src.Name,
+			FromPG: src.Name,
+		}
+		fields = append(fields, field)
+	}
+
+	return templateCacheEntity{
+		Name:   msg.Name,
+		Fields: fields,
+	}
 }
 
 func (v *astVisitor) visitImportSpec(t *ast.ImportSpec) error {

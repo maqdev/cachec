@@ -15,6 +15,11 @@ var (
 	dalFS embed.FS
 
 	DALTemplate = mustParse("dal.tmpl", dalFS)
+
+	//go:embed protoconv.tmpl
+	protoconvFS embed.FS
+
+	ProtoConvTemplate = mustParse("protoconv.tmpl", protoconvFS)
 )
 
 func mustParse(name string, fs embed.FS) *template.Template {
