@@ -15,7 +15,11 @@ import (
 func (x *{{$entity.Name}}) ToPG() *{{$.GoPackageName}}.{{$entity.Name}} {
 	return &{{$.GoPackageName}}.{{$entity.Name}}{
     {{- range $field := $entity.Fields}}
-      {{$field.Name}}: x.{{$field.ToPG}},
+      {{if .FromProto -}}
+      {{.Name}}: {{.FromProto}}(x.{{.Name}}),
+      {{- else -}}
+      {{.Name}}: x.{{.Name}},
+      {{end -}}
     {{- end}}
   }
 }
@@ -23,7 +27,11 @@ func (x *{{$entity.Name}}) ToPG() *{{$.GoPackageName}}.{{$entity.Name}} {
 func {{$entity.Name}}FromPG(x *{{$.GoPackageName}}.{{$entity.Name}}) *{{$entity.Name}} {
 	return &{{$entity.Name}}{
     {{- range $field := $entity.Fields}}
-      {{$field.Name}}: x.{{$field.FromPG}},
+      {{if .ToProto -}}
+      {{.Name}}: {{.ToProto}}(x.{{.Name}}),
+      {{- else -}}
+      {{.Name}}: x.{{.Name}},
+      {{end -}}
     {{- end}}
   }
 }

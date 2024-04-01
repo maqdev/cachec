@@ -4,7 +4,8 @@ import "time"
 
 type AppConfig struct {
 	Packages       []Package
-	TypeMap        TypeMap
+	Types          TypeMap
+	ConvertFuncs   ConvertFunctionMap
 	ProtoImports   map[ProtoFile][]ProtoType
 	SkipDALMethods map[string]bool
 }
@@ -34,3 +35,9 @@ type GoType string
 type ProtoType string
 type ProtoFile string
 type TypeMap map[GoModule]map[GoType]ProtoType
+
+type ConvertFunctions struct {
+	ToProto   string
+	FromProto string
+}
+type ConvertFunctionMap map[ProtoType]ConvertFunctions

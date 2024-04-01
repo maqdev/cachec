@@ -62,7 +62,8 @@ func run() error {
 	}
 
 	rootModuleName := modFileParsed.Module.Mod.Path
-	typeMap := mergeTypeMap(cfg.TypeMap)
+	typeMap := mergeTypeMap(cfg.Types)
+	convertFunctions := mergeConvertFunctionMap(cfg.ConvertFuncs)
 	protoImports := mergeProtoImportMap(cfg.ProtoImports)
 	skipDALMethids := mergeSkipDALMethods(cfg.SkipDALMethods)
 
@@ -106,7 +107,13 @@ func run() error {
 				GoCachePackageName:  path.Base(string(protoGoPackagePath)),
 			}
 
-			v := &astVisitor{templateData: td, typeMap: typeMap, protoImportsMap: protoImports, skipDALMethids: skipDALMethids, cacheEntities: p.Entities}
+			v := &astVisitor{templateData: td,
+				typeMap:          typeMap,
+				protoImportsMap:  protoImports,
+				skipDALMethids:   skipDALMethids,
+				convertFunctions: convertFunctions,
+				cacheEntities:    p.Entities,
+			}
 			v.walkPackage(pkg)
 
 			if v.err != nil {
@@ -197,6 +204,25 @@ func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
 	return res
 }
 
+func mergeConvertFunctionMap(convertFuncs config.ConvertFunctionMap) config.ConvertFunctionMap {
+	res := config.ConvertFunctionMap{
+		"google.protobuf.Timestamp": {
+			// todo: time converters
+			ToProto:   "protoutil.PGToWrappedString",
+			FromProto: "protoutil.WrappedStringToPG",
+		},
+		"google.protobuf.StringValue": {
+			ToProto:   "protoutil.PGToWrappedString",
+			FromProto: "protoutil.WrappedStringToPG",
+		},
+	}
+
+	for protoType, funcs := range convertFuncs {
+		res[protoType] = funcs
+	}
+	return res
+}
+
 type ProtoImportMap map[config.ProtoType]config.ProtoFile
 
 func mergeProtoImportMap(protoImports map[config.ProtoFile][]config.ProtoType) ProtoImportMap {
@@ -221,7 +247,7 @@ func moduleRelPath(subdir string) config.GoModule {
 }
 
 type templateMessageField struct {
-	Type   string
+	Type   config.ProtoType
 	Name   string
 	Number int
 }
@@ -243,9 +269,9 @@ type templateDALMethod struct {
 }
 
 type templateCacheEntityField struct {
-	Name   string
-	ToPG   string
-	FromPG string
+	Name      string
+	FromProto string
+	ToProto   string
 }
 
 type templateCacheEntity struct {
@@ -273,13 +299,14 @@ type templateData struct {
 type importAlias string
 
 type astVisitor struct {
-	templateData    templateData
-	typeMap         config.TypeMap
-	protoImportsMap ProtoImportMap
-	goFileImports   map[importAlias]config.GoModule
-	skipDALMethids  map[string]bool
-	cacheEntities   map[string]config.EntityConfig
-	err             error
+	templateData     templateData
+	typeMap          config.TypeMap
+	protoImportsMap  ProtoImportMap
+	goFileImports    map[importAlias]config.GoModule
+	skipDALMethids   map[string]bool
+	cacheEntities    map[string]config.EntityConfig
+	convertFunctions config.ConvertFunctionMap
+	err              error
 }
 
 func (v *astVisitor) walkPackage(pkg *packages.Package) {
@@ -370,10 +397,15 @@ func (v *astVisitor) createCacheEntity(msg templateMessage, ce config.EntityConf
 	var fields []templateCacheEntityField
 	for _, src := range msg.Fields {
 		field := templateCacheEntityField{
-			Name:   src.Name,
-			ToPG:   src.Name,
-			FromPG: src.Name,
+			Name: src.Name,
 		}
+		if conv, ok := v.convertFunctions[src.Type]; ok {
+			field.FromProto = conv.FromProto
+			field.ToProto = conv.ToProto
+
+			v.goFileImports
+		}
+
 		fields = append(fields, field)
 	}
 
@@ -447,7 +479,7 @@ func (v *astVisitor) resolveGoType(expr ast.Expr) (config.GoModule, config.GoTyp
 	return module, typ, nil
 }
 
-func (v *astVisitor) structTypeToProto(expr ast.Expr) (string, error) {
+func (v *astVisitor) structTypeToProto(expr ast.Expr) (config.ProtoType, error) {
 	module, typ, err := v.resolveGoType(expr)
 	if err != nil {
 		return "", err
@@ -470,7 +502,7 @@ func (v *astVisitor) structTypeToProto(expr ast.Expr) (string, error) {
 			// todo: apply isArray !!!
 			fmt.Println(isArray)
 
-			return string(protoType), nil
+			return protoType, nil
 		}
 	}
 	return "", fmt.Errorf("can't find mapping of %s.%s", module, typ)
