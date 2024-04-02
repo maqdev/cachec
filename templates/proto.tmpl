@@ -16,7 +16,7 @@ import "{{$import}}";
 message {{$message.Name}} {
 //    bool Doesnt_Exist_In_DB = 1;
 {{- range $field := $message.Fields}}
-    {{$field.Type}} {{$field.Name}} = {{$field.Number}};
+    {{$field.ProtoType}} {{$field.Name}} = {{$field.Number}};
 {{- end}}
 }
 

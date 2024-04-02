@@ -28,3 +28,4 @@ WHERE id = $1;
 -- name: DeleteAuthor :exec
 DELETE FROM authors
 WHERE id = $1;
+

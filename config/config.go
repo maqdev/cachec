@@ -34,7 +34,14 @@ type GoModule string
 type GoType string
 type ProtoType string
 type ProtoFile string
-type TypeMap map[GoModule]map[GoType]ProtoType
+
+type TypeInfo struct {
+	ProtoType     ProtoType
+	ToProtoFunc   string
+	FromProtoFunc string
+}
+
+type TypeMap map[GoModule]map[GoType]TypeInfo
 
 type ConvertFunctions struct {
 	ToProto   string

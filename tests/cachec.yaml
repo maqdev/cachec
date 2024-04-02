@@ -1,16 +1,24 @@
 packages:
-  source: tests/gen/queries/example
-  protoOutput: tests/gen/proto
-  dalOutput: tests/gen/dal/example
-
-  entities:
-    Author:
-      keys: [ID]
-      ttl: 10m
-      read:
-        GetAuthor:
-        GetAuthorsByIDs:
-          strategy: multi
-      invalidate:
-        DeleteAuthor:
-        UpdateAuthor:
+  - source: tests/gen/queries/example
+    protoOutput: tests/gen/proto
+    dalOutput: tests/gen/dal/example
+    entities:
+      Author:
+        keys: [ ID ]
+        ttl: 10m
+        read:
+          GetAuthor:
+          GetAuthorsByIDs:
+            strategy: multi
+        invalidate:
+          DeleteAuthor:
+          UpdateAuthor:
+      Book:
+        keys: [ ID ]
+        read:
+          GetBook:
+          GetBooksByIDs:
+            strategy: multi
+        invalidate:
+          DeleteBook:
+          UpdateBook:

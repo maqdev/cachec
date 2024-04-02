@@ -63,7 +63,6 @@ func run() error {
 
 	rootModuleName := modFileParsed.Module.Mod.Path
 	typeMap := mergeTypeMap(cfg.Types)
-	convertFunctions := mergeConvertFunctionMap(cfg.ConvertFuncs)
 	protoImports := mergeProtoImportMap(cfg.ProtoImports)
 	skipDALMethids := mergeSkipDALMethods(cfg.SkipDALMethods)
 
@@ -109,11 +108,10 @@ func run() error {
 			}
 
 			v := &astVisitor{templateData: td,
-				typeMap:          typeMap,
-				protoImportsMap:  protoImports,
-				skipDALMethids:   skipDALMethids,
-				convertFunctions: convertFunctions,
-				cacheEntities:    p.Entities,
+				typeMap:         typeMap,
+				protoImportsMap: protoImports,
+				skipDALMethids:  skipDALMethids,
+				cacheEntities:   p.Entities,
 			}
 			v.walkPackage(pkg)
 
@@ -175,51 +173,42 @@ func mergeSkipDALMethods(methods map[string]bool) map[string]bool {
 
 func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
 	res := config.TypeMap{
-		"": map[config.GoType]config.ProtoType{
-			"int32":   "int32",
-			"int64":   "int64",
-			"uint32":  "uint32",
-			"uint64":  "uint64",
-			"float32": "float",
-			"float64": "double",
-			"bool":    "bool",
-			"string":  "string",
-			"[]byte":  "bytes",
+		"": map[config.GoType]config.TypeInfo{
+			"int32":   {ProtoType: "int32"},
+			"int64":   {ProtoType: "int64"},
+			"uint32":  {ProtoType: "uint32"},
+			"uint64":  {ProtoType: "uint64"},
+			"float32": {ProtoType: "float"},
+			"float64": {ProtoType: "double"},
+			"bool":    {ProtoType: "bool"},
+			"string":  {ProtoType: "string"},
+			"[]byte":  {ProtoType: "bytes"},
 		},
-		"time": map[config.GoType]config.ProtoType{
-			"Time": "google.protobuf.Timestamp",
+		"time": map[config.GoType]config.TypeInfo{
+			"Time": {ProtoType: "google.protobuf.Timestamp"},
 		},
-		"github.com/jackc/pgx/v5/pgtype": map[config.GoType]config.ProtoType{
-			"Text": "google.protobuf.StringValue",
+		"github.com/jackc/pgx/v5/pgtype": map[config.GoType]config.TypeInfo{
+			"Text": {
+				FromProtoFunc: "github.com/maqdev/cachec/util/protoutil.WrappedStringToPGText",
+				ToProtoFunc:   "github.com/maqdev/cachec/util/protoutil.PGTextToWrappedString",
+				ProtoType:     "google.protobuf.StringValue",
+			},
+			// todo: time converters
+			"Timestamptz": {
+				FromProtoFunc: "github.com/maqdev/cachec/util/protoutil.TimestampToPGTimestamptz",
+				ToProtoFunc:   "github.com/maqdev/cachec/util/protoutil.PGTimestamptzToTimestamp",
+				ProtoType:     "google.protobuf.Timestamp",
+			},
 		},
 	}
 
 	for goModule, types := range typeMap {
 		if _, ok := res[goModule]; !ok {
-			res[goModule] = make(map[config.GoType]config.ProtoType)
+			res[goModule] = make(map[config.GoType]config.TypeInfo)
 		}
 		for goType, protoType := range types {
 			res[goModule][goType] = protoType
 		}
-	}
-	return res
-}
-
-func mergeConvertFunctionMap(convertFuncs config.ConvertFunctionMap) config.ConvertFunctionMap {
-	res := config.ConvertFunctionMap{
-		"google.protobuf.Timestamp": {
-			// todo: time converters
-			ToProto:   "github.com/maqdev/cachec/util/protoutil.PGToWrappedString",
-			FromProto: "github.com/maqdev/cachec/util/protoutil.WrappedStringToPG",
-		},
-		"google.protobuf.StringValue": {
-			ToProto:   "github.com/maqdev/cachec/util/protoutil.PGToWrappedString",
-			FromProto: "github.com/maqdev/cachec/util/protoutil.WrappedStringToPG",
-		},
-	}
-
-	for protoType, funcs := range convertFuncs {
-		res[protoType] = funcs
 	}
 	return res
 }
@@ -248,9 +237,11 @@ func moduleRelPath(subdir string) config.GoModule {
 }
 
 type templateMessageField struct {
-	Type   config.ProtoType
-	Name   string
-	Number int
+	GoModule  config.GoModule
+	GoType    config.GoType
+	ProtoType config.ProtoType
+	Name      string
+	Number    int
 }
 
 type templateMessage struct {
@@ -301,14 +292,13 @@ type templateData struct {
 type importAlias string
 
 type astVisitor struct {
-	templateData     templateData
-	typeMap          config.TypeMap
-	protoImportsMap  ProtoImportMap
-	goFileImports    map[importAlias]config.GoModule
-	skipDALMethids   map[string]bool
-	cacheEntities    map[string]config.EntityConfig
-	convertFunctions config.ConvertFunctionMap
-	err              error
+	templateData    templateData
+	typeMap         config.TypeMap
+	protoImportsMap ProtoImportMap
+	goFileImports   map[importAlias]config.GoModule
+	skipDALMethids  map[string]bool
+	cacheEntities   map[string]config.EntityConfig
+	err             error
 }
 
 func (v *astVisitor) walkPackage(pkg *packages.Package) {
@@ -369,14 +359,21 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 							continue
 						}
 
-						typ, err := v.structTypeToProto(field.Type)
+						module, typ, err := v.resolveGoType(field.Type)
+						if err != nil {
+							return fmt.Errorf("can't resolve type of %v: %w", field, err)
+						}
+
+						protoType, err := v.structTypeToProto(module, typ)
 						if err != nil {
 							return fmt.Errorf("failed to convert field '%s' of type '%s' to proto: %w", fieldName, field.Type, err)
 						}
 						msg.Fields = append(msg.Fields, templateMessageField{
-							Type:   typ,
-							Name:   fieldName,
-							Number: index,
+							GoModule:  module,
+							GoType:    typ,
+							ProtoType: protoType,
+							Name:      fieldName,
+							Number:    index,
 						})
 						index += 10
 					}
@@ -401,10 +398,12 @@ func (v *astVisitor) createCacheEntity(msg templateMessage, ce config.EntityConf
 		field := templateCacheEntityField{
 			Name: src.Name,
 		}
-		if conv, ok := v.convertFunctions[src.Type]; ok {
-			field.FromProto = addOrFindAliasFunc(conv.FromProto, v.templateData.GoCacheImports)
-			field.ToProto = addOrFindAliasFunc(conv.ToProto, v.templateData.GoCacheImports)
-			//v.goFileImports
+
+		if types, okModule := v.typeMap[src.GoModule]; okModule {
+			if typeInfo, okType := types[src.GoType]; okType {
+				field.FromProto = addOrFindAliasFunc(typeInfo.FromProtoFunc, v.templateData.GoCacheImports)
+				field.ToProto = addOrFindAliasFunc(typeInfo.ToProtoFunc, v.templateData.GoCacheImports)
+			}
 		}
 
 		fields = append(fields, field)
@@ -492,21 +491,16 @@ func (v *astVisitor) resolveGoType(expr ast.Expr) (config.GoModule, config.GoTyp
 	return module, typ, nil
 }
 
-func (v *astVisitor) structTypeToProto(expr ast.Expr) (config.ProtoType, error) {
-	module, typ, err := v.resolveGoType(expr)
-	if err != nil {
-		return "", err
-	}
-
+func (v *astVisitor) structTypeToProto(module config.GoModule, typ config.GoType) (config.ProtoType, error) {
 	var isArray bool
 	if strings.HasPrefix(string(typ), "[]") {
 		isArray = true
 		typ = config.GoType(strings.TrimLeft(string(typ), "[]"))
 	}
 
-	if types, ok := v.typeMap[module]; ok {
-		if protoType, okProtoType := types[typ]; okProtoType {
-			if protoFile, okProtoImport := v.protoImportsMap[protoType]; okProtoImport {
+	if types, okModule := v.typeMap[module]; okModule {
+		if typeInfo, okType := types[typ]; okType {
+			if protoFile, okProtoImport := v.protoImportsMap[typeInfo.ProtoType]; okProtoImport {
 				if slices.Index(v.templateData.ProtoImports, protoFile) < 0 {
 					v.templateData.ProtoImports = append(v.templateData.ProtoImports, protoFile)
 				}
@@ -515,7 +509,7 @@ func (v *astVisitor) structTypeToProto(expr ast.Expr) (config.ProtoType, error) 
 			// todo: apply isArray !!!
 			fmt.Println(isArray)
 
-			return protoType, nil
+			return typeInfo.ProtoType, nil
 		}
 	}
 	return "", fmt.Errorf("can't find mapping of %s.%s", module, typ)
