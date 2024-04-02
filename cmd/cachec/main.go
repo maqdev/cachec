@@ -105,6 +105,7 @@ func run() error {
 				ProtoGoPackagePath:  protoGoPackagePath,
 				CacheCVersion:       CacheCVersion,
 				GoCachePackageName:  path.Base(string(protoGoPackagePath)),
+				GoCacheImports:      make(map[importAlias]config.GoModule), // todo: reset per file?
 			}
 
 			v := &astVisitor{templateData: td,
@@ -208,12 +209,12 @@ func mergeConvertFunctionMap(convertFuncs config.ConvertFunctionMap) config.Conv
 	res := config.ConvertFunctionMap{
 		"google.protobuf.Timestamp": {
 			// todo: time converters
-			ToProto:   "protoutil.PGToWrappedString",
-			FromProto: "protoutil.WrappedStringToPG",
+			ToProto:   "github.com/maqdev/cachec/util/protoutil.PGToWrappedString",
+			FromProto: "github.com/maqdev/cachec/util/protoutil.WrappedStringToPG",
 		},
 		"google.protobuf.StringValue": {
-			ToProto:   "protoutil.PGToWrappedString",
-			FromProto: "protoutil.WrappedStringToPG",
+			ToProto:   "github.com/maqdev/cachec/util/protoutil.PGToWrappedString",
+			FromProto: "github.com/maqdev/cachec/util/protoutil.WrappedStringToPG",
 		},
 	}
 
@@ -275,8 +276,9 @@ type templateCacheEntityField struct {
 }
 
 type templateCacheEntity struct {
-	Name   string
-	Fields []templateCacheEntityField
+	Name              string
+	EntityImportAlias importAlias
+	Fields            []templateCacheEntityField
 }
 
 type templateData struct {
@@ -400,19 +402,30 @@ func (v *astVisitor) createCacheEntity(msg templateMessage, ce config.EntityConf
 			Name: src.Name,
 		}
 		if conv, ok := v.convertFunctions[src.Type]; ok {
-			field.FromProto = conv.FromProto
-			field.ToProto = conv.ToProto
-
-			v.goFileImports
+			field.FromProto = addOrFindAliasFunc(conv.FromProto, v.templateData.GoCacheImports)
+			field.ToProto = addOrFindAliasFunc(conv.ToProto, v.templateData.GoCacheImports)
+			//v.goFileImports
 		}
 
 		fields = append(fields, field)
 	}
 
 	return templateCacheEntity{
-		Name:   msg.Name,
-		Fields: fields,
+		Name:              msg.Name,
+		EntityImportAlias: addOrFindAlias(v.templateData.SourceGoPackagePath, v.templateData.GoCacheImports),
+		Fields:            fields,
 	}
+}
+
+func addOrFindAliasFunc(fnc string, imports map[importAlias]config.GoModule) string {
+	sep := strings.LastIndex(fnc, ".")
+	if sep < 0 {
+		return fnc
+	}
+	mod := fnc[:sep]
+	funcName := fnc[sep+1:]
+	alias := addOrFindAlias(config.GoModule(mod), imports)
+	return string(alias) + "." + funcName
 }
 
 func (v *astVisitor) visitImportSpec(t *ast.ImportSpec) error {
@@ -574,7 +587,7 @@ func (v *astVisitor) resolveListOfArgs(params *ast.FieldList) ([]templateParam, 
 		if err != nil {
 			return nil, err
 		}
-		alias := v.addOrFindAlias(mod)
+		alias := addOrFindAlias(mod, v.templateData.GoImports)
 
 		var fullType string
 		if alias != "" {
@@ -596,19 +609,19 @@ func (v *astVisitor) resolveListOfArgs(params *ast.FieldList) ([]templateParam, 
 	return res, nil
 }
 
-func (v *astVisitor) addOrFindAlias(mod config.GoModule) importAlias {
+func addOrFindAlias(mod config.GoModule, imports map[importAlias]config.GoModule) importAlias {
 	if mod == "" {
 		return ""
 	}
 	def := defaultAlias(mod)
 	alias := def
 	for i := 1; ; i++ {
-		if existingMod, ok := v.templateData.GoImports[alias]; ok {
+		if existingMod, ok := imports[alias]; ok {
 			if existingMod == mod {
 				break
 			}
 		} else {
-			v.templateData.GoImports[alias] = mod
+			imports[alias] = mod
 			break
 		}
 		alias = importAlias(fmt.Sprintf("%s%d", def, i))

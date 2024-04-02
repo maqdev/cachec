@@ -12,8 +12,8 @@ import (
 
 {{- range $entity := .CacheEntities}}
 
-func (x *{{$entity.Name}}) ToPG() *{{$.GoPackageName}}.{{$entity.Name}} {
-	return &{{$.GoPackageName}}.{{$entity.Name}}{
+func (x *{{$entity.Name}}) ToPG() *{{$entity.EntityImportAlias}}.{{$entity.Name}} {
+	return &{{$entity.EntityImportAlias}}.{{$entity.Name}}{
     {{- range $field := $entity.Fields}}
       {{if .FromProto -}}
       {{.Name}}: {{.FromProto}}(x.{{.Name}}),
@@ -24,7 +24,7 @@ func (x *{{$entity.Name}}) ToPG() *{{$.GoPackageName}}.{{$entity.Name}} {
   }
 }
 
-func {{$entity.Name}}FromPG(x *{{$.GoPackageName}}.{{$entity.Name}}) *{{$entity.Name}} {
+func {{$entity.Name}}FromPG(x *{{$entity.EntityImportAlias}}.{{$entity.Name}}) *{{$entity.Name}} {
 	return &{{$entity.Name}}{
     {{- range $field := $entity.Fields}}
       {{if .ToProto -}}
