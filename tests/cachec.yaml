@@ -5,6 +5,8 @@ packages:
     entities:
       Author:
         keys: [ ID ]
+        cacheNotFound: true
+        invalidateOnUpdate: true
         ttl: 10m
         read:
           GetAuthor:
@@ -15,6 +17,7 @@ packages:
           UpdateAuthor:
       Book:
         keys: [ ID ]
+        cacheNotFound: false
         read:
           GetBook:
           GetBooksByIDs:

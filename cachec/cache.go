@@ -15,11 +15,15 @@ type Cache interface {
 	Get(ctx context.Context, entity Entity, key Key, dest proto.Message) error
 	MGet(ctx context.Context, entity Entity, keys []Key, dest []proto.Message, creator func() proto.Message) error
 	Set(ctx context.Context, entity Entity, key Key, src proto.Message, ttl time.Time) error
+	SetNotFoundInDB(ctx context.Context, entity Entity, key Key, ttl time.Time) error
 	Delete(ctx context.Context, entity Entity, key Key) error
 }
 
 type CacheClient interface {
 	Cache
+	// todo: pipeline?
 }
 
-var ErrNotFound = errors.New("entity record isn't in cache")
+var ErrNotCached = errors.New("not cached")
+
+var ErrNotFound = errors.Join(errors.New("not found"), ErrNotCached)
