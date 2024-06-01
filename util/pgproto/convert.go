@@ -1,4 +1,4 @@
-package protoutil
+package pgproto
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"

@@ -9,6 +9,15 @@ Cache layer generator for Go
 6.1. sources (models, Queries?)
 6.2. overrides for types (converters)
 6.3. specify: cache key, cache ttl, cache prefix (get/or update/mget?), ignore specific methods
-    
+6.4. redis hash tags    
 
 entity map (shorten keys)
+
+todo:
+\\
+\0
+\1
+
+- encoding/decoding keys (binary, base64, string)
+- ttl in config -> code
+- 

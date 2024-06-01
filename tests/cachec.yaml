@@ -4,6 +4,7 @@ packages:
     dalOutput: tests/gen/dal/example
     entities:
       Author:
+        cachePrefix: a
         keys: [ ID ]
         cacheNotFound: true
         invalidateOnUpdate: true
@@ -16,6 +17,7 @@ packages:
           DeleteAuthor:
           UpdateAuthor:
       Book:
+        cachePrefix: b
         keys: [ ID ]
         cacheNotFound: false
         read:

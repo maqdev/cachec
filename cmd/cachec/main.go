@@ -189,14 +189,14 @@ func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
 		},
 		"github.com/jackc/pgx/v5/pgtype": map[config.GoType]config.TypeInfo{
 			"Text": {
-				FromProtoFunc: "github.com/maqdev/cachec/util/protoutil.WrappedStringToPGText",
-				ToProtoFunc:   "github.com/maqdev/cachec/util/protoutil.PGTextToWrappedString",
+				FromProtoFunc: "github.com/maqdev/cachec/util/pgproto.WrappedStringToPGText",
+				ToProtoFunc:   "github.com/maqdev/cachec/util/pgproto.PGTextToWrappedString",
 				ProtoType:     "google.protobuf.StringValue",
 			},
 			// todo: time converters
 			"Timestamptz": {
-				FromProtoFunc: "github.com/maqdev/cachec/util/protoutil.TimestampToPGTimestamptz",
-				ToProtoFunc:   "github.com/maqdev/cachec/util/protoutil.PGTimestamptzToTimestamp",
+				FromProtoFunc: "github.com/maqdev/cachec/util/pgproto.TimestampToPGTimestamptz",
+				ToProtoFunc:   "github.com/maqdev/cachec/util/pgproto.PGTimestamptzToTimestamp",
 				ProtoType:     "google.protobuf.Timestamp",
 			},
 		},

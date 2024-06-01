@@ -8,15 +8,24 @@ import (
 	proto "google.golang.org/protobuf/proto"
 )
 
-type Key [][]byte
-type Entity string
+type CacheEntity struct {
+	KeyPrefix  KeyPrefix
+	EntityName string
+}
+
+type Key struct {
+	PartitionKey  []byte
+	ClusteringKey []byte
+}
+
+type KeyPrefix string
 
 type Cache interface {
-	Get(ctx context.Context, entity Entity, key Key, dest proto.Message) error
-	MGet(ctx context.Context, entity Entity, keys []Key, dest []proto.Message, creator func() proto.Message) error
-	Set(ctx context.Context, entity Entity, key Key, src proto.Message, ttl time.Time) error
-	SetNotFoundInDB(ctx context.Context, entity Entity, key Key, ttl time.Time) error
-	Delete(ctx context.Context, entity Entity, key Key) error
+	Get(ctx context.Context, entity CacheEntity, key Key, dest proto.Message) error
+	MGet(ctx context.Context, entity CacheEntity, keys []Key, dest []proto.Message, creator func() proto.Message) error
+	Set(ctx context.Context, entity CacheEntity, key Key, src proto.Message, ttl time.Time) error
+	FlagAsNotFound(ctx context.Context, entity CacheEntity, key Key, ttl time.Time) error
+	Delete(ctx context.Context, entity CacheEntity, key Key) error
 }
 
 type CacheClient interface {
@@ -24,6 +33,8 @@ type CacheClient interface {
 	// todo: pipeline?
 }
 
+// ErrNotCached means the cache doesn't have a corresponding entity for the key (wasn't cached yet)
 var ErrNotCached = errors.New("not cached")
 
-var ErrNotFound = errors.Join(errors.New("not found"), ErrNotCached)
+// ErrNotFound means that the entity is not found neither in cache nor in the database
+var ErrNotFound = errors.New("not found")
