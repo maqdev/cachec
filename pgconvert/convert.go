@@ -1,4 +1,4 @@
-package pgproto
+package pgconvert
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"

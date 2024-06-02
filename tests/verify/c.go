@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/maqdev/cachec/cachec"
+	"github.com/maqdev/cachec/pgconvert"
 	"github.com/maqdev/cachec/tests/gen/dal/example"
 	"github.com/maqdev/cachec/tests/gen/dal/example/cache"
 	exampleDB "github.com/maqdev/cachec/tests/gen/queries/example"
-	"time"
 )
 
 const (
@@ -21,6 +23,7 @@ var (
 	AuthorEntity = cachec.CacheEntity{
 		KeyPrefix:  AuthorCachePrefix,
 		EntityName: AuthorEntityName,
+		TTL:        10 * time.Minute,
 	}
 )
 
@@ -92,7 +95,8 @@ func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Autho
 	var cachedResult cache.Author
 	// how to get key from id?
 	key := cachec.Key{}
-	err := e.cacheClient.Get(ctx, AuthorEntity, key, &cachedResult)
+	key.ClusteringKey = pgconvert.Binary_AppendInt64(key.ClusteringKey, id)
+	err := pgconvert.WrapCacheError(e.cacheClient.Get(ctx, AuthorEntity, key, &cachedResult))
 
 	switch {
 	// found in cache
@@ -112,14 +116,11 @@ func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Autho
 		var result exampleDB.Author
 		result, err = e.next.GetAuthor(ctx, id)
 		if err != nil {
-			// todo: convert pg no rows error to ErrNotFound
+			err = pgconvert.WrapDBError(err)
 
 			if errors.Is(err, cachec.ErrNotFound) {
 				// if cacheNotFound is enabled, flag as not found in cache
-				// ttl from config
-				ttl := time.Now().Add(24 * time.Hour)
-
-				err = e.cacheClient.FlagAsNotFound(ctx, AuthorEntity, key, ttl)
+				err = e.cacheClient.FlagAsNotFound(ctx, AuthorEntity, key)
 				if err != nil {
 					return exampleDB.Author{}, fmt.Errorf("GetAuthor/cacheClient.FlagAsNotFound failed: %w", err)
 				}
@@ -130,17 +131,18 @@ func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Autho
 
 		newCachedResult := cache.AuthorFromPG(&result)
 
-		// ttl from config
-		ttl := time.Now().Add(24 * time.Hour)
-
 		// cache asynchronously if strategy allows
-		err = e.cacheClient.Set(ctx, AuthorEntity, key, newCachedResult, ttl)
+		err = pgconvert.WrapCacheError(e.cacheClient.Set(ctx, AuthorEntity, key, newCachedResult))
 		if err != nil {
 			return exampleDB.Author{}, fmt.Errorf("GetAuthor/cacheClient.Set failed: %w", err)
 		}
 
 		return result, nil
 	}
+}
+
+func AuthorKey(id int64) {
+
 }
 
 var _ example.DAL = &exampleCache{}
