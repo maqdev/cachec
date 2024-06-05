@@ -29,7 +29,10 @@ var (
 )
 
 func NewExampleCache(next example.DAL, cacheClient cachec.CacheClient) example.DAL {
-	return &exampleCache{}
+	return &exampleCache{
+		next:        next,
+		cacheClient: cacheClient,
+	}
 }
 
 type exampleCache struct {
@@ -98,8 +101,8 @@ type CachedEntity[T any] interface {
 }
 
 func Get[T any, C CachedEntity[T]](ctx context.Context, cacheClient cachec.CacheClient, methodName string,
-	entity cachec.CacheEntity, key cachec.Key, next func() (T, error), convert func(in *T) C, dest *T) error {
-	var cachedResult C
+	entity cachec.CacheEntity, key cachec.Key, next func() (T, error), convert func(in *T) C, cachedResult C, dest *T) error {
+	//var cachedResult = new(C)
 	err := pgconvert.WrapCacheError(cacheClient.Get(ctx, AuthorEntity, key, cachedResult))
 
 	switch {
@@ -153,12 +156,13 @@ func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Autho
 		},
 	}
 
+	var cacheResult cache.Author
 	var result exampleDB.Author
 	err := Get[exampleDB.Author, *cache.Author](ctx, e.cacheClient, "GetAuthor", AuthorEntity, key,
 		func() (exampleDB.Author, error) {
 			return e.next.GetAuthor(ctx, id)
 		},
-		cache.AuthorFromPG, &result)
+		cache.AuthorFromPG, &cacheResult, &result)
 
 	return result, err
 }
