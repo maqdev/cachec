@@ -19,10 +19,11 @@ type Package struct {
 }
 
 type EntityConfig struct {
-	Key        []string
-	TTL        time.Duration
-	Read       map[MethodName]ReadMethodConfig
-	Invalidate map[MethodName]InvalidateMethodConfig
+	Keys          []string
+	PartitionKeys []string
+	TTL           time.Duration
+	Read          map[MethodName]ReadMethodConfig
+	Invalidate    map[MethodName]InvalidateMethodConfig
 }
 
 type MethodName string

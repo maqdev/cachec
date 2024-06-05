@@ -93,9 +93,11 @@ func (e *exampleCache) GetAllAuthors(ctx context.Context) ([]exampleDB.Author, e
 
 func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Author, error) {
 	var cachedResult cache.Author
-	// how to get key from id?
-	key := cachec.Key{}
-	key.ClusteringKey = pgconvert.Binary_AppendInt64(key.ClusteringKey, id)
+	key := cachec.Key{
+		ClusteringKey: &cache.AuthorKey{
+			ID: id,
+		},
+	}
 	err := pgconvert.WrapCacheError(e.cacheClient.Get(ctx, AuthorEntity, key, &cachedResult))
 
 	switch {
@@ -139,10 +141,6 @@ func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Autho
 
 		return result, nil
 	}
-}
-
-func AuthorKey(id int64) {
-
 }
 
 var _ example.DAL = &exampleCache{}

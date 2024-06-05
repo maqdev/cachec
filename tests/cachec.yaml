@@ -19,6 +19,7 @@ packages:
       Book:
         cachePrefix: b
         keys: [ ID ]
+        partitionKeys: [ AuthorID ]
         cacheNotFound: false
         read:
           GetBook:

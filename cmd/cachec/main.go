@@ -189,14 +189,14 @@ func mergeTypeMap(typeMap config.TypeMap) config.TypeMap {
 		},
 		"github.com/jackc/pgx/v5/pgtype": map[config.GoType]config.TypeInfo{
 			"Text": {
-				FromProtoFunc: "github.com/maqdev/cachec/util/pgproto.WrappedStringToPGText",
-				ToProtoFunc:   "github.com/maqdev/cachec/util/pgproto.PGTextToWrappedString",
+				FromProtoFunc: "github.com/maqdev/cachec/pgconvert.WrappedStringToPGText",
+				ToProtoFunc:   "github.com/maqdev/cachec/pgconvert.PGTextToWrappedString",
 				ProtoType:     "google.protobuf.StringValue",
 			},
 			// todo: time converters
 			"Timestamptz": {
-				FromProtoFunc: "github.com/maqdev/cachec/util/pgproto.TimestampToPGTimestamptz",
-				ToProtoFunc:   "github.com/maqdev/cachec/util/pgproto.PGTimestamptzToTimestamp",
+				FromProtoFunc: "github.com/maqdev/cachec/pgconvert.TimestampToPGTimestamptz",
+				ToProtoFunc:   "github.com/maqdev/cachec/pgconvert.PGTimestamptzToTimestamp",
 				ProtoType:     "google.protobuf.Timestamp",
 			},
 		},
@@ -384,6 +384,26 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 
 					if ce, ok := v.cacheEntities[msg.Name]; ok {
 						v.templateData.CacheEntities = append(v.templateData.CacheEntities, v.createCacheEntity(msg, ce))
+
+						if len(ce.Keys) > 0 {
+							msgKey, err := v.createCacheEntityKey(msg, ce, "Key", ce.Keys)
+							if err != nil {
+								return err
+							}
+							v.templateData.ProtoMessages = append(v.templateData.ProtoMessages, *msgKey)
+						}
+
+						if len(ce.PartitionKeys) > 0 {
+							if len(ce.Keys) == 0 {
+								return fmt.Errorf("partition keys are defined but no keys for entity '%s'", msg.Name)
+							}
+
+							msgKey, err := v.createCacheEntityKey(msg, ce, "PartitionKey", ce.PartitionKeys)
+							if err != nil {
+								return err
+							}
+							v.templateData.ProtoMessages = append(v.templateData.ProtoMessages, *msgKey)
+						}
 					}
 				}
 			}
@@ -601,6 +621,27 @@ func (v *astVisitor) resolveListOfArgs(params *ast.FieldList) ([]templateParam, 
 		})
 	}
 	return res, nil
+}
+
+func (v *astVisitor) createCacheEntityKey(msg templateMessage, ce config.EntityConfig, postfix string, keys []string) (*templateMessage, error) {
+	keyMessageName := msg.Name + postfix
+	msgKey := templateMessage{
+		Name: keyMessageName,
+	}
+	for _, key := range keys {
+		found := false
+		for _, field := range msg.Fields {
+			if key == field.Name {
+				msgKey.Fields = append(msgKey.Fields, field)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("key field '%s' not found in entity '%s'", key, msg.Name)
+		}
+	}
+	return &msgKey, nil
 }
 
 func addOrFindAlias(mod config.GoModule, imports map[importAlias]config.GoModule) importAlias {

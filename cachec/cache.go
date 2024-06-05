@@ -15,8 +15,8 @@ type CacheEntity struct {
 }
 
 type Key struct {
-	PartitionKey  []byte
-	ClusteringKey []byte
+	PartitionKey  proto.Message
+	ClusteringKey proto.Message
 }
 
 type KeyPrefix string
