@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/maqdev/cachec/cachec"
-	"github.com/maqdev/cachec/cachec/goredis"
+	"github.com/maqdev/cachec/cachec/clients/goredis"
 	"github.com/maqdev/cachec/tests/gen/dal/example"
 	exampleDB "github.com/maqdev/cachec/tests/gen/queries/example"
 	"github.com/redis/go-redis/v9"
