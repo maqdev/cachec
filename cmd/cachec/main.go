@@ -386,7 +386,7 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 						v.templateData.CacheEntities = append(v.templateData.CacheEntities, v.createCacheEntity(msg, ce))
 
 						if len(ce.Keys) > 0 {
-							msgKey, err := v.createCacheEntityKey(msg, ce, "Key", ce.Keys)
+							msgKey, err := v.createCacheEntityKey(msg, ce, "__Key", ce.Keys)
 							if err != nil {
 								return err
 							}
@@ -398,7 +398,7 @@ func (v *astVisitor) visitGenDecl(t *ast.GenDecl) error {
 								return fmt.Errorf("partition keys are defined but no keys for entity '%s'", msg.Name)
 							}
 
-							msgKey, err := v.createCacheEntityKey(msg, ce, "PartitionKey", ce.PartitionKeys)
+							msgKey, err := v.createCacheEntityKey(msg, ce, "__PartitionKey", ce.PartitionKeys)
 							if err != nil {
 								return err
 							}
