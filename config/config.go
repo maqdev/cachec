@@ -11,11 +11,12 @@ type AppConfig struct {
 }
 
 type Package struct {
-	Source            string
-	ProtoOutput       string
-	DALOutput         string
-	CacheModelsOutput string
-	Entities          map[string]EntityConfig
+	Source         string
+	ProtoDir       string
+	DALDir         string
+	CacheModelsDir string
+	CacheDir       string
+	Entities       map[string]EntityConfig
 }
 
 type EntityConfig struct {

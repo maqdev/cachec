@@ -1,7 +1,7 @@
 packages:
   - source: tests/gen/queries/example
-    protoOutput: tests/gen/proto
-    dalOutput: tests/gen/dal/example
+    protoDir: tests/gen/proto
+    dalDir: tests/gen/dal/example
     entities:
       Author:
         keys: [ ID ]

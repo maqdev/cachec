@@ -2,7 +2,7 @@
 // versions:
 //   cachec {{.CacheCVersion}}
 
-package {{.GoDALPackageName}}
+package {{.GoCachePackageName}}
 
 import (
 {{- range $alias, $path := .GoDALImports}}
@@ -10,10 +10,14 @@ import (
 {{- end}}
 )
 
-type DAL interface {
-{{- range $method := .DALMethods}}
-    {{$method.Name}}(
-    {{- range $idx, $a := $method.Args -}} {{if $idx}},{{end}} {{$a.Name}} {{$a.GoFullType}} {{- end -}}
-    ) ({{- range $idx, $a := $method.Result -}} {{if $idx}},{{end}} {{$a.Name}} {{$a.GoFullType}} {{- end -}})
-{{- end}}
+type Cache struct {
 }
+
+{{- range $method := .DALMethods}}
+func (c *Cache)  {{$method.Name}}(
+    {{- range $idx, $a := $method.Args -}} {{if $idx}},{{end}} {{$a.Name}} {{$a.GoFullType}} {{- end -}}
+    ) ({{- range $idx, $a := $method.Result -}} {{if $idx}},{{end}} {{$a.Name}} {{$a.GoFullType}} {{- end -}}) {
+	//TODO implement me
+	panic("implement me")
+}
+{{- end}}

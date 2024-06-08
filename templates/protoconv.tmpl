@@ -2,10 +2,10 @@
 // versions:
 //   cachec {{.CacheCVersion}}
 
-package {{.GoCachePackageName}}
+package {{.GoProtoPackageName}}
 
 import (
-{{- range $alias, $path := .GoCacheImports}}
+{{- range $alias, $path := .GoProtoImports}}
     {{$alias}} "{{$path}}"
 {{- end}}
 )

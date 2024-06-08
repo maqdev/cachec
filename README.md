@@ -20,4 +20,8 @@ todo:
 
 - encoding/decoding keys (binary, base64, string)
 - ttl in config -> code
-- 
+
+generate cache l:
+- key from args
+- key from struct
+- strategy call

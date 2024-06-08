@@ -85,26 +85,35 @@ func run() error {
 			packageName := pkg.Name
 
 			slog.Debug("Walking package", "name", packageName)
-			if p.DALOutput == "" {
+			if p.DALDir == "" {
 				return fmt.Errorf("DALOutput is required for package '%s'", packageName)
 			}
 
 			var protoGoPackagePath config.GoModule
-			if p.CacheModelsOutput != "" {
-				protoGoPackagePath = moduleRelPath(p.CacheModelsOutput)
+			if p.CacheModelsDir != "" {
+				protoGoPackagePath = moduleRelPath(p.CacheModelsDir)
 			} else {
-				protoGoPackagePath = moduleRelPath(p.DALOutput) + "/cache"
+				protoGoPackagePath = moduleRelPath(p.DALDir) + "/proto"
+			}
+
+			var cacheGoPackagePath config.GoModule
+			if p.CacheDir != "" {
+				cacheGoPackagePath = moduleRelPath(p.CacheDir)
+			} else {
+				cacheGoPackagePath = moduleRelPath(p.DALDir) + "/cache"
 			}
 
 			td := templateData{
 				ProtoPackageName:    packageName,
 				SourceGoPackagePath: moduleJoinPath(rootModuleName, p.Source),
-				GoPackageName:       packageName,
-				DALGoPackagePath:    moduleJoinPath(rootModuleName, p.DALOutput),
-				ProtoGoPackagePath:  protoGoPackagePath,
+				GoDALPackageName:    packageName,
+				DALGoPackagePath:    moduleJoinPath(rootModuleName, p.DALDir),
+				GoProtoPackagePath:  protoGoPackagePath,
+				CacheGoPackagePath:  cacheGoPackagePath,
 				CacheCVersion:       CacheCVersion,
-				GoCachePackageName:  path.Base(string(protoGoPackagePath)),
-				GoCacheImports:      make(map[importAlias]config.GoModule), // todo: reset per file?
+				GoProtoPackageName:  path.Base(string(protoGoPackagePath)),
+				GoCachePackageName:  path.Base(string(cacheGoPackagePath)),
+				GoProtoImports:      make(map[importAlias]config.GoModule), // todo: reset per file?
 			}
 
 			v := &astVisitor{templateData: td,
@@ -124,24 +133,27 @@ func run() error {
 				template *template.Template
 			}{
 				{
-					dest:     path.Join(p.ProtoOutput, packageName+".proto"),
+					dest:     path.Join(p.ProtoDir, packageName+".proto"),
 					template: templates.ProtoTemplate,
 				},
 				{
-					dest:     path.Join(p.DALOutput, packageName+".go"),
+					dest:     path.Join(p.DALDir, packageName+".go"),
 					template: templates.DALTemplate,
 				},
-
 				{
 					dest:     path.Join(string(protoGoPackagePath), packageName+".protoconv.go"),
 					template: templates.ProtoConvTemplate,
+				},
+				{
+					dest:     path.Join(string(cacheGoPackagePath), packageName+".go"),
+					template: templates.CacheTemplate,
 				},
 			}
 
 			for _, tmpl := range tmpls {
 				err = os.MkdirAll(path.Dir(tmpl.dest), 0755)
 				if err != nil {
-					return fmt.Errorf("failed to create ouput directory '%s': %w", p.ProtoOutput, err)
+					return fmt.Errorf("failed to create ouput directory '%s': %w", p.ProtoDir, err)
 				}
 
 				slog.Info("Generating", "file", tmpl.dest)
@@ -273,20 +285,27 @@ type templateCacheEntity struct {
 }
 
 type templateData struct {
-	ProtoPackageName    string
-	SourceGoPackagePath config.GoModule
-	DALGoPackagePath    config.GoModule
-	ProtoGoPackagePath  config.GoModule
-	GoPackageName       string
 	CacheCVersion       string
-	ProtoImports        []config.ProtoFile
-	ProtoMessages       []templateMessage
-	DALMethods          []templateDALMethod
-	GoImports           map[importAlias]config.GoModule
+	SourceGoPackagePath config.GoModule
 
+	// DAL is the base interface generated from underlying DB access layer struct
+	DALGoPackagePath config.GoModule
+	GoDALPackageName string
+	DALMethods       []templateDALMethod
+	GoDALImports     map[importAlias]config.GoModule
+
+	ProtoPackageName string
+	ProtoImports     []config.ProtoFile
+	ProtoMessages    []templateMessage
+
+	GoProtoPackagePath config.GoModule
+	GoProtoPackageName string
+	GoProtoImports     map[importAlias]config.GoModule
+
+	CacheGoPackagePath config.GoModule
 	GoCachePackageName string
-	GoCacheImports     map[importAlias]config.GoModule
-	CacheEntities      []templateCacheEntity
+
+	CacheEntities []templateCacheEntity
 }
 
 type importAlias string
@@ -302,7 +321,7 @@ type astVisitor struct {
 }
 
 func (v *astVisitor) walkPackage(pkg *packages.Package) {
-	v.templateData.GoImports = make(map[importAlias]config.GoModule)
+	v.templateData.GoDALImports = make(map[importAlias]config.GoModule)
 	for _, file := range pkg.Syntax {
 		ast.Walk(v, file)
 	}
@@ -421,8 +440,8 @@ func (v *astVisitor) createCacheEntity(msg templateMessage, ce config.EntityConf
 
 		if types, okModule := v.typeMap[src.GoModule]; okModule {
 			if typeInfo, okType := types[src.GoType]; okType {
-				field.FromProto = addOrFindAliasFunc(typeInfo.FromProtoFunc, v.templateData.GoCacheImports)
-				field.ToProto = addOrFindAliasFunc(typeInfo.ToProtoFunc, v.templateData.GoCacheImports)
+				field.FromProto = addOrFindAliasFunc(typeInfo.FromProtoFunc, v.templateData.GoProtoImports)
+				field.ToProto = addOrFindAliasFunc(typeInfo.ToProtoFunc, v.templateData.GoProtoImports)
 			}
 		}
 
@@ -431,7 +450,7 @@ func (v *astVisitor) createCacheEntity(msg templateMessage, ce config.EntityConf
 
 	return templateCacheEntity{
 		Name:              msg.Name,
-		EntityImportAlias: addOrFindAlias(v.templateData.SourceGoPackagePath, v.templateData.GoCacheImports),
+		EntityImportAlias: addOrFindAlias(v.templateData.SourceGoPackagePath, v.templateData.GoProtoImports),
 		Fields:            fields,
 	}
 }
@@ -601,7 +620,7 @@ func (v *astVisitor) resolveListOfArgs(params *ast.FieldList) ([]templateParam, 
 		if err != nil {
 			return nil, err
 		}
-		alias := addOrFindAlias(mod, v.templateData.GoImports)
+		alias := addOrFindAlias(mod, v.templateData.GoDALImports)
 
 		var fullType string
 		if alias != "" {
