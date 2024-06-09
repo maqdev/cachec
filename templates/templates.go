@@ -16,6 +16,11 @@ var (
 
 	DALTemplate = mustParse("dal.tmpl", dalFS)
 
+	//go:embed cache.tmpl
+	cacheFS embed.FS
+
+	CacheTemplate = mustParse("cache.tmpl", cacheFS)
+
 	//go:embed protoconv.tmpl
 	protoconvFS embed.FS
 

@@ -3,12 +3,13 @@ package verify
 import (
 	"context"
 	"fmt"
-	"github.com/maqdev/cachec/cachec/strategies"
 	"time"
+
+	"github.com/maqdev/cachec/cachec/strategies"
 
 	"github.com/maqdev/cachec/cachec"
 	"github.com/maqdev/cachec/tests/gen/dal/example"
-	"github.com/maqdev/cachec/tests/gen/dal/example/cache"
+	"github.com/maqdev/cachec/tests/gen/dal/example/proto"
 	exampleDB "github.com/maqdev/cachec/tests/gen/queries/example"
 )
 
@@ -109,17 +110,17 @@ func (e *exampleCache) GetAllAuthors(ctx context.Context) ([]exampleDB.Author, e
 
 func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Author, error) {
 	key := cachec.Key{
-		ClusteringKey: &cache.Author__Key{
+		ClusteringKey: &proto.Author__Key{
 			ID: id,
 		},
 	}
 
-	result, err := strategies.GetFromCacheOrNext[exampleDB.Author, cache.Author](ctx, e.cacheClient, "GetAuthor", AuthorEntity, key,
+	result, err := strategies.GetFromCacheOrNext[exampleDB.Author, proto.Author](ctx, e.cacheClient, "GetAuthor", AuthorEntity, key,
 		true, false,
 		func() (exampleDB.Author, error) {
 			return e.next.GetAuthor(ctx, id)
 		},
-		cache.AuthorFromPG)
+		proto.AuthorFromPG)
 
 	if err != nil {
 		return exampleDB.Author{}, err

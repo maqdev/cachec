@@ -5,7 +5,7 @@
 syntax = "proto3";
 package {{.ProtoPackageName}};
 
-option go_package = "{{.ProtoGoPackagePath}}";
+option go_package = "{{.GoProtoPackagePath}}";
 
 {{- range $import := .ProtoImports}}
 import "{{$import}}";
