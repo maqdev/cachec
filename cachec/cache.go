@@ -9,9 +9,11 @@ import (
 )
 
 type CacheEntity struct {
-	KeyPrefix  KeyPrefix
-	EntityName string
-	TTL        time.Duration
+	KeyPrefix     KeyPrefix
+	EntityName    string
+	TTL           time.Duration
+	StoreNotFound bool
+	CacheAsync    bool
 }
 
 type Key struct {
@@ -21,24 +23,21 @@ type Key struct {
 
 type KeyPrefix string
 
-type MGetRecord struct {
-	Message proto.Message
-	Err     error
+type GetResult struct {
+	Value proto.Message
+	Err   error
 }
 
-type MSetRecord struct {
+type SetCommand struct {
 	Key         Key
-	Message     proto.Message
+	Value       proto.Message
 	SetNotFound bool
+	Delete      bool
 }
 
 type Cache interface {
-	Get(ctx context.Context, entity CacheEntity, key Key, dest proto.Message) error
-	Set(ctx context.Context, entity CacheEntity, key Key, src proto.Message) error
-	FlagAsNotFound(ctx context.Context, entity CacheEntity, keys ...Key) error
-	Delete(ctx context.Context, entity CacheEntity, keys ...Key) error
-	MGet(ctx context.Context, entity CacheEntity, keys []Key, creator func() proto.Message) ([]MGetRecord, error)
-	MSet(ctx context.Context, entity CacheEntity, set []MSetRecord) error
+	MultiGet(ctx context.Context, entity CacheEntity, keys []Key, creator func() proto.Message) ([]GetResult, error)
+	MultiSet(ctx context.Context, entity CacheEntity, set []SetCommand) ([]error, error)
 }
 
 type CacheClient interface {

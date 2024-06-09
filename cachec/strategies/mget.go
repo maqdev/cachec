@@ -2,14 +2,13 @@ package strategies
 
 import (
 	"context"
+
 	"github.com/maqdev/cachec/cachec"
 )
 
 func MGetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf CachedEntity[PGStruct, CacheEntityStruct]](
 	ctx context.Context, cacheClient cachec.CacheClient, opName string,
 	entity cachec.CacheEntity, keys []cachec.Key,
-	storeInCacheNotFound bool,
-	storeInCacheAsynchronously bool,
 	next func(indices []int) ([]PGStruct, error),
 	convertToCache func(in *PGStruct) CacheEntityIntf) ([]*PGStruct, error) {
 
@@ -85,16 +84,16 @@ func MGetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf Ca
 	//
 	//		if !storeInCacheAsynchronously {
 	//			// cache asynchronously if strategy allows
-	//			err = pgconvert.WrapCacheError(cacheClient.Set(ctx, entity, key, newCachedResult))
+	//			err = pgconvert.WrapCacheError(cacheClient.MultiSet(ctx, entity, key, newCachedResult))
 	//			if err != nil {
-	//				return nil, fmt.Errorf("%s/cacheClient.Set failed: %w", opName, err)
+	//				return nil, fmt.Errorf("%s/cacheClient.MultiSet failed: %w", opName, err)
 	//			}
 	//		} else {
 	//			go func() {
 	//				ctxAsync, cancel := context.WithTimeout(context.WithoutCancel(ctx), AsynchronousCacheTimeout)
 	//				defer cancel()
 	//
-	//				err = pgconvert.WrapCacheError(cacheClient.Set(ctxAsync, entity, key, newCachedResult))
+	//				err = pgconvert.WrapCacheError(cacheClient.MultiSet(ctxAsync, entity, key, newCachedResult))
 	//				if err != nil {
 	//					slog.Error("failed to cache %s: %s", entity.EntityName, err)
 	//				}
@@ -117,7 +116,7 @@ func MGetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf Ca
 	//
 	//// other error
 	//case !errors.Is(err, cachec.ErrNotCached):
-	//	return nil, fmt.Errorf("%s/cacheClient.Get failed: %w", opName, err)
+	//	return nil, fmt.Errorf("%s/cacheClient.MultiGet failed: %w", opName, err)
 	//
 	//// not found in cache, load from the next DAL
 	//default:
@@ -154,16 +153,16 @@ func MGetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf Ca
 	//
 	//	if !storeInCacheAsynchronously {
 	//		// cache asynchronously if strategy allows
-	//		err = pgconvert.WrapCacheError(cacheClient.Set(ctx, entity, key, newCachedResult))
+	//		err = pgconvert.WrapCacheError(cacheClient.MultiSet(ctx, entity, key, newCachedResult))
 	//		if err != nil {
-	//			return nil, fmt.Errorf("%s/cacheClient.Set failed: %w", opName, err)
+	//			return nil, fmt.Errorf("%s/cacheClient.MultiSet failed: %w", opName, err)
 	//		}
 	//	} else {
 	//		go func() {
 	//			ctxAsync, cancel := context.WithTimeout(context.WithoutCancel(ctx), AsynchronousCacheTimeout)
 	//			defer cancel()
 	//
-	//			err = pgconvert.WrapCacheError(cacheClient.Set(ctxAsync, entity, key, newCachedResult))
+	//			err = pgconvert.WrapCacheError(cacheClient.MultiSet(ctxAsync, entity, key, newCachedResult))
 	//			if err != nil {
 	//				slog.Error("failed to cache %s: %s", entity.EntityName, err)
 	//			}

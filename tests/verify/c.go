@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/maqdev/cachec/cachec/strategies"
-
 	"github.com/maqdev/cachec/cachec"
+	"github.com/maqdev/cachec/cachec/strategies"
 	"github.com/maqdev/cachec/tests/gen/dal/example"
 	"github.com/maqdev/cachec/tests/gen/dal/example/proto"
 	exampleDB "github.com/maqdev/cachec/tests/gen/queries/example"
@@ -21,13 +20,15 @@ const (
 
 var (
 	AuthorEntity = cachec.CacheEntity{
-		KeyPrefix:  AuthorCachePrefix,
-		EntityName: AuthorEntityName,
-		TTL:        10 * time.Minute,
+		KeyPrefix:     AuthorCachePrefix,
+		EntityName:    AuthorEntityName,
+		TTL:           10 * time.Minute,
+		StoreNotFound: true,
+		CacheAsync:    false,
 	}
 )
 
-func NewExampleCache(next example.DAL, cacheClient cachec.CacheClient) example.DAL {
+func NewExampleCache(next example.DAL, cacheClient *cachec.CacheClientHelper) example.DAL {
 	return &exampleCache{
 		next:        next,
 		cacheClient: cacheClient,
@@ -36,7 +37,7 @@ func NewExampleCache(next example.DAL, cacheClient cachec.CacheClient) example.D
 
 type exampleCache struct {
 	next        example.DAL
-	cacheClient cachec.CacheClient
+	cacheClient *cachec.CacheClientHelper
 }
 
 func (e *exampleCache) UpdateAuthor(ctx context.Context, arg exampleDB.UpdateAuthorParams) error {
@@ -91,7 +92,10 @@ func (e *exampleCache) DeleteAuthor(ctx context.Context, id int64) error {
 		},
 	}
 
-	err = e.cacheClient.Delete(ctx, AuthorEntity, key)
+	_, err = e.cacheClient.MultiSet(ctx, AuthorEntity, []cachec.SetCommand{
+		{Key: key, Delete: true},
+	})
+
 	if err != nil {
 		return fmt.Errorf("cacheClient.Delete failed: %w", err)
 	}
@@ -116,7 +120,6 @@ func (e *exampleCache) GetAuthor(ctx context.Context, id int64) (exampleDB.Autho
 	}
 
 	result, err := strategies.GetFromCacheOrNext[exampleDB.Author, proto.Author](ctx, e.cacheClient, "GetAuthor", AuthorEntity, key,
-		true, false,
 		func() (exampleDB.Author, error) {
 			return e.next.GetAuthor(ctx, id)
 		},

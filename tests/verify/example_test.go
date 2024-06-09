@@ -3,6 +3,8 @@ package verify
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/maqdev/cachec/cachec"
 	"github.com/maqdev/cachec/cachec/clients/goredis"
@@ -10,7 +12,6 @@ import (
 	exampleDB "github.com/maqdev/cachec/tests/gen/queries/example"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func Test_ExampleDAL(t *testing.T) {
@@ -22,7 +23,7 @@ func Test_ExampleDAL(t *testing.T) {
 
 	cacheClient := goredis.NewGoRedisCache(redisClient)
 
-	dal := NewExampleCache(db, cacheClient)
+	dal := NewExampleCache(db, &cachec.CacheClientHelper{CacheClient: cacheClient})
 
 	a, err := dal.GetAuthor(context.Background(), 1)
 	require.NoError(t, err)
