@@ -9,7 +9,7 @@ import (
 func MGetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf CachedEntity[PGStruct, CacheEntityStruct]](
 	ctx context.Context, cacheClient cachec.CacheClient, opName string,
 	entity cachec.CacheEntity, keys []cachec.Key,
-	next func(indices []int) ([]PGStruct, error),
+	next func(indices []int) ([]*PGStruct, error),
 	convertToCache func(in *PGStruct) CacheEntityIntf) ([]*PGStruct, error) {
 
 	panic("implement me")

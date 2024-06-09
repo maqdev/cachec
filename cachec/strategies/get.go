@@ -2,8 +2,10 @@ package strategies
 
 import (
 	"context"
+	"errors"
 
 	"github.com/maqdev/cachec/cachec"
+	"github.com/maqdev/cachec/pgconvert"
 )
 
 func GetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf CachedEntity[PGStruct, CacheEntityStruct]](
@@ -12,78 +14,25 @@ func GetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf Cac
 	next func() (PGStruct, error),
 	convertToCache func(in *PGStruct) CacheEntityIntf) (*PGStruct, error) {
 
-	panic("implement me")
+	result, err := MGetFromCacheOrNext[PGStruct, CacheEntityStruct, CacheEntityIntf](
+		ctx, cacheClient, opName, entity, []cachec.Key{key},
+		func(_ []int) ([]*PGStruct, error) {
+			res, err := next()
+			if err != nil {
+				err = pgconvert.WrapDBError(err)
+				if errors.Is(err, cachec.ErrNotFound) {
+					return []*PGStruct{nil}, nil
+				}
+				return nil, err
+			}
+			return []*PGStruct{&res}, nil
+		},
+		convertToCache,
+	)
 
-	// todo: call MGetFromCacheOrNext?
+	if err != nil {
+		return nil, err
+	}
 
-	//var c CacheEntityStruct
-	//cachedResult := CacheEntityIntf(&c)
-	//err := pgconvert.WrapCacheError(cacheClient.Get(ctx, entity, key, cachedResult))
-	//
-	//switch {
-	//// found in cache
-	//case err == nil:
-	//	return cachedResult.ToPG(), nil
-	//
-	//// flagged as not found in cache
-	//case errors.Is(err, cachec.ErrNotFound):
-	//	return nil, fmt.Errorf("`%s` is not found: %w", entity.EntityName, err)
-	//
-	//// other error
-	//case !errors.Is(err, cachec.ErrNotCached):
-	//	return nil, fmt.Errorf("%s/cacheClient.Get failed: %w", opName, err)
-	//
-	//// not found in cache, load from the next DAL
-	//default:
-	//	result, err := next()
-	//	if err != nil {
-	//		err = pgconvert.WrapDBError(err)
-	//
-	//		if errors.Is(err, cachec.ErrNotFound) {
-	//			if storeInCacheNotFound {
-	//				if !storeInCacheAsynchronously {
-	//					// if cacheNotFound is enabled, flag as not found in cache
-	//					err = cacheClient.FlagAsNotFound(ctx, entity, key)
-	//					if err != nil {
-	//						return nil, fmt.Errorf("%s/cacheClient.FlagAsNotFound failed: %w", opName, err)
-	//					}
-	//				} else {
-	//					go func() {
-	//						ctxAsync, cancel := context.WithTimeout(context.WithoutCancel(ctx), AsynchronousCacheTimeout)
-	//						defer cancel()
-	//
-	//						err = cacheClient.FlagAsNotFound(ctxAsync, entity, key)
-	//						if err != nil {
-	//							slog.Error("failed to flag as not found in cache %s: %s", entity.EntityName, err)
-	//						}
-	//					}()
-	//				}
-	//			}
-	//
-	//			return nil, fmt.Errorf("`%s` is not found: %w", entity.EntityName, err)
-	//		}
-	//	}
-	//
-	//	newCachedResult := convertToCache(&result)
-	//
-	//	if !storeInCacheAsynchronously {
-	//		// cache asynchronously if strategy allows
-	//		err = pgconvert.WrapCacheError(cacheClient.Set(ctx, entity, key, newCachedResult))
-	//		if err != nil {
-	//			return nil, fmt.Errorf("%s/cacheClient.Set failed: %w", opName, err)
-	//		}
-	//	} else {
-	//		go func() {
-	//			ctxAsync, cancel := context.WithTimeout(context.WithoutCancel(ctx), AsynchronousCacheTimeout)
-	//			defer cancel()
-	//
-	//			err = pgconvert.WrapCacheError(cacheClient.Set(ctxAsync, entity, key, newCachedResult))
-	//			if err != nil {
-	//				slog.Error("failed to cache %s: %s", entity.EntityName, err)
-	//			}
-	//		}()
-	//	}
-	//
-	//	return &result, nil
-	//}
+	return result[0], nil
 }
