@@ -86,7 +86,7 @@ func (e *exampleCache) DeleteAuthor(ctx context.Context, id int64) error {
 	}
 
 	key := cachec.Key{
-		ClusteringKey: &cache.Author__Key{
+		ClusteringKey: &proto.Author__Key{
 			ID: id,
 		},
 	}
