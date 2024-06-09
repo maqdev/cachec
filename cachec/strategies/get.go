@@ -23,7 +23,7 @@ func GetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf Cac
 	storeInCacheNotFound bool,
 	storeInCacheAsynchronously bool,
 	next func() (PGStruct, error),
-	converToCache func(in *PGStruct) CacheEntityIntf) (*PGStruct, error) {
+	convertToCache func(in *PGStruct) CacheEntityIntf) (*PGStruct, error) {
 
 	var c CacheEntityStruct
 	cachedResult := CacheEntityIntf(&c)
@@ -73,7 +73,7 @@ func GetFromCacheOrNext[PGStruct any, CacheEntityStruct any, CacheEntityIntf Cac
 			}
 		}
 
-		newCachedResult := converToCache(&result)
+		newCachedResult := convertToCache(&result)
 
 		if !storeInCacheAsynchronously {
 			// cache asynchronously if strategy allows

@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"fmt"
 	"github.com/maqdev/cachec/cachec/strategies"
 	"time"
 
@@ -35,11 +36,6 @@ func NewExampleCache(next example.DAL, cacheClient cachec.CacheClient) example.D
 type exampleCache struct {
 	next        example.DAL
 	cacheClient cachec.CacheClient
-}
-
-func (e *exampleCache) GetAuthorsByIDs(ctx context.Context, ids []int64) ([]exampleDB.Author, error) {
-	//TODO implement me
-	panic("implement me")
 }
 
 func (e *exampleCache) UpdateAuthor(ctx context.Context, arg exampleDB.UpdateAuthorParams) error {
@@ -83,6 +79,25 @@ func (e *exampleCache) CreateAuthor(ctx context.Context, arg exampleDB.CreateAut
 }
 
 func (e *exampleCache) DeleteAuthor(ctx context.Context, id int64) error {
+	err := e.next.DeleteAuthor(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	key := cachec.Key{
+		ClusteringKey: &cache.Author__Key{
+			ID: id,
+		},
+	}
+
+	err = e.cacheClient.Delete(ctx, AuthorEntity, key)
+	if err != nil {
+		return fmt.Errorf("cacheClient.Delete failed: %w", err)
+	}
+	return nil
+}
+
+func (e *exampleCache) GetAuthorsByIDs(ctx context.Context, ids []int64) ([]exampleDB.Author, error) {
 	//TODO implement me
 	panic("implement me")
 }

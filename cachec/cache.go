@@ -21,12 +21,24 @@ type Key struct {
 
 type KeyPrefix string
 
+type MGetRecord struct {
+	Message proto.Message
+	Err     error
+}
+
+type MSetRecord struct {
+	Key         Key
+	Message     proto.Message
+	SetNotFound bool
+}
+
 type Cache interface {
 	Get(ctx context.Context, entity CacheEntity, key Key, dest proto.Message) error
-	MGet(ctx context.Context, entity CacheEntity, keys []Key, dest []proto.Message, creator func() proto.Message) error
 	Set(ctx context.Context, entity CacheEntity, key Key, src proto.Message) error
-	FlagAsNotFound(ctx context.Context, entity CacheEntity, key Key) error
-	Delete(ctx context.Context, entity CacheEntity, key Key) error
+	FlagAsNotFound(ctx context.Context, entity CacheEntity, keys ...Key) error
+	Delete(ctx context.Context, entity CacheEntity, keys ...Key) error
+	MGet(ctx context.Context, entity CacheEntity, keys []Key, creator func() proto.Message) ([]MGetRecord, error)
+	MSet(ctx context.Context, entity CacheEntity, set []MSetRecord) error
 }
 
 type CacheClient interface {
