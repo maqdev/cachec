@@ -1,8 +1,8 @@
 TEST_OPTS=--race
 LINT_OPTS=
 
-LINTER_VERSION=v1.57.2
-SQLC_VERSION=v1.26.0
+LINTER_VERSION=v1.64.8
+SQLC_VERSION=v1.29.0
 PROTOBUF_DOCKER=jaegertracing/protobuf:v0.5.0
 
 USER_ID = $(shell id -u)
